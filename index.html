@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>trazo. — Calzado de Vestir, Sandalias Tejidas &amp; Carteras</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- BARRA DE NAVEGACIÓN SUPERIOR -->
+  <header class="navbar">
+    <div class="navbar-inner">
+      <nav class="nav-links" aria-label="Navegación principal">
+        <a href="#catalogo" class="nav-link" data-nav-cat="Todos">Colección</a>
+        <a href="#catalogo" class="nav-link" data-nav-cat="Calzado Hombre">Hombre</a>
+        <a href="#catalogo" class="nav-link" data-nav-cat="Calzado Mujer">Mujer</a>
+        <a href="#catalogo" class="nav-link" data-nav-cat="Sandalias Tejidas">Sandalias Tejidas</a>
+        <a href="#catalogo" class="nav-link" data-nav-cat="Carteras">Carteras</a>
+      </nav>
+
+      <a href="#" class="brand-logo" aria-label="Inicio trazo">trazo<span>.</span></a>
+
+      <div class="nav-actions">
+        <!-- Botón de Acceso Administrador -->
+        <button class="btn-admin-entry" id="openAdminEntryBtn" title="Panel de Administración">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span id="adminEntryLabel">Admin</span>
+        </button>
+
+        <button class="icon-btn" id="openWishlistBtn" aria-label="Ver favoritos" title="Favoritos">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+          <span class="badge-dot" id="wishlistCount">0</span>
+        </button>
+
+        <button class="btn-dark-pill" id="openCartBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <path d="M16 10a4 4 0 0 1-8 0"></path>
+          </svg>
+          <span>Carrito</span>
+          <span class="cart-pill-count" id="cartCount">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- SECCIÓN HERO OSCURA DE ALTO CONTRASTE -->
+  <section class="hero">
+    <div class="hero-art" aria-hidden="true">
+      <div class="ribbon ribbon-1"></div>
+      <div class="ribbon ribbon-2"></div>
+      <div class="ribbon ribbon-3"></div>
+    </div>
+
+    <div class="hero-content">
+      <div class="category-pills" id="categoryPills" role="tablist" aria-label="Secciones de la tienda">
+        <button class="pill active" data-category="Todos">Toda la Colección</button>
+        <button class="pill" data-category="Calzado Hombre">Calzado de Hombre</button>
+        <button class="pill" data-category="Calzado Mujer">Calzado de Mujer</button>
+        <button class="pill" data-category="Sandalias Tejidas">Sandalias Tejidas</button>
+        <button class="pill" data-category="Carteras">Carteras</button>
+      </div>
+
+      <h1 class="hero-title">
+        Distinción y artesanía<br />en cada paso que das
+      </h1>
+      <p class="hero-subtitle">
+        Colección exclusiva de calzado de vestir para hombre y mujer, sandalias tejidas
+        a mano y carteras de diseño atemporal.
+      </p>
+
+      <div class="search-wrapper">
+        <svg class="search-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input
+          type="text"
+          id="searchInput"
+          class="search-input"
+          placeholder="Buscar por modelo, material o estilo (ej. oxford, taco, sandalia tejida, cartera)..."
+          autocomplete="off"
+        />
+        <button class="clear-search" id="clearSearchBtn" aria-label="Limpiar búsqueda" hidden>&times;</button>
+      </div>
+
+      <div class="trending-row">
+        <span class="trending-label">Búsquedas destacadas</span>
+        <div class="trending-tags" id="trendingTags">
+          <button class="trend-tag" data-search="Oxford">oxford de gala</button>
+          <button class="trend-tag" data-search="Salón">taco salón</button>
+          <button class="trend-tag" data-search="Tejida">sandalias tejidas</button>
+          <button class="trend-tag" data-search="Cartera">carteras de cuero</button>
+          <button class="trend-tag" data-search="Mocasín">mocasín vestir</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- APARTADOS PRINCIPALES (HOMBRE, MUJER, SANDALIAS TEJIDAS, CARTERAS) -->
+  <section class="departments-section" aria-label="Apartados principales">
+    <div class="container">
+      <div class="departments-grid" id="departmentsGrid">
+        <button type="button" class="dept-card" data-dept-cat="Calzado Hombre">
+          <span class="dept-tag">Caballeros</span>
+          <h3>Calzado de Hombre</h3>
+          <p>Oxford, Derby y mocasines de vestir en cuero seleccionado.</p>
+          <span class="dept-link">Ver colección &rarr;</span>
+        </button>
+
+        <button type="button" class="dept-card" data-dept-cat="Calzado Mujer">
+          <span class="dept-tag">Damas</span>
+          <h3>Calzado de Mujer</h3>
+          <p>Zapatos de salón, tacones finos y diseños de etiqueta.</p>
+          <span class="dept-link">Ver colección &rarr;</span>
+        </button>
+
+        <button type="button" class="dept-card" data-dept-cat="Sandalias Tejidas">
+          <span class="dept-tag">Artesanía</span>
+          <h3>Sandalias Tejidas</h3>
+          <p>Tejido trenzado a mano con acabados finos y horma cómoda.</p>
+          <span class="dept-link">Ver colección &rarr;</span>
+        </button>
+
+        <button type="button" class="dept-card" data-dept-cat="Carteras">
+          <span class="dept-tag">Marroquinería</span>
+          <h3>Carteras</h3>
+          <p>Bolsos estructurados, bandoleras y carteras de mano.</p>
+          <span class="dept-link">Ver colección &rarr;</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTENIDO PRINCIPAL: CATÁLOGO -->
+  <main class="catalog-section" id="catalogo">
+    <div class="container">
+      <div class="catalog-heading-row">
+        <div>
+          <h2 class="catalog-section-title" id="activeSectionTitle">Toda la Colección</h2>
+          <p class="catalog-section-sub" id="activeSectionSub">
+            Calzado de vestir para hombre y mujer, sandalias tejidas y carteras.
+          </p>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <div class="select-wrap">
+            <select id="sortSelect" class="sort-select" aria-label="Ordenar productos">
+              <option value="popular">Más solicitados</option>
+              <option value="price-asc">Precio: menor a mayor</option>
+              <option value="price-desc">Precio: mayor a menor</option>
+              <option value="newest">Nueva temporada</option>
+            </select>
+          </div>
+          <span class="results-counter" id="resultsCounter">Mostrando 10 artículos</span>
+        </div>
+
+        <button class="btn-filter-toggle" id="toggleFiltersBtn" aria-expanded="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="4" y1="6" x2="20" y2="6"></line>
+            <line x1="7" y1="12" x2="17" y2="12"></line>
+            <line x1="10" y1="18" x2="14" y2="18"></line>
+          </svg>
+          <span>Filtrar por talla o precio</span>
+        </button>
+      </div>
+
+      <div class="filters-panel" id="filtersPanel" hidden>
+        <div class="filter-group">
+          <label class="filter-label">Filtrar por Talla (EU) / Medida:</label>
+          <div class="size-filter-pills" id="sizeFilterPills">
+            <button class="size-chip active" data-size="all">Todas</button>
+            <button class="size-chip" data-size="35">35</button>
+            <button class="size-chip" data-size="36">36</button>
+            <button class="size-chip" data-size="37">37</button>
+            <button class="size-chip" data-size="38">38</button>
+            <button class="size-chip" data-size="39">39</button>
+            <button class="size-chip" data-size="40">40</button>
+            <button class="size-chip" data-size="41">41</button>
+            <button class="size-chip" data-size="42">42</button>
+            <button class="size-chip" data-size="43">43</button>
+            <button class="size-chip" data-size="Única">Talla Única (Carteras)</button>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label" for="maxPriceRange">
+            Precio máximo: <strong id="maxPriceLabel">S/ 800</strong>
+          </label>
+          <input type="range" id="maxPriceRange" min="150" max="800" step="10" value="800" />
+        </div>
+
+        <button class="btn-reset-filters" id="resetFiltersBtn">Restablecer filtros</button>
+      </div>
+
+      <div class="products-grid" id="productsGrid"></div>
+
+      <div class="empty-state" id="emptyState" hidden>
+        <h3>No encontramos artículos con ese criterio</h3>
+        <p>Intenta buscar con otro término o limpia los filtros activos.</p>
+        <button class="btn-dark-pill" id="emptyResetBtn">Ver toda la colección</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- PIE DE PÁGINA -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div>
+        <a href="#" class="brand-logo">trazo<span>.</span></a>
+        <p class="footer-desc">Calzado de vestir para hombre y mujer, sandalias tejidas y carteras. Envíos a todo el Perú.</p>
+      </div>
+      <div class="footer-links">
+        <a href="#catalogo" data-nav-cat="Calzado Hombre">Hombre</a>
+        <a href="#catalogo" data-nav-cat="Calzado Mujer">Mujer</a>
+        <a href="#catalogo" data-nav-cat="Sandalias Tejidas">Sandalias Tejidas</a>
+        <a href="#catalogo" data-nav-cat="Carteras">Carteras</a>
+        <a href="#catalogo" id="footerAdminLink">Acceso Administrador</a>
+      </div>
+      <p class="footer-copy">&copy; 2026 trazo. Todos los derechos reservados.</p>
+    </div>
+  </footer>
+
+  <!-- DRAWER LATERAL DEL CARRITO DE COMPRAS -->
+  <div class="drawer-backdrop" id="cartBackdrop" hidden></div>
+  <aside class="cart-drawer" id="cartDrawer" aria-hidden="true" aria-label="Carrito de compras">
+    <div class="drawer-header">
+      <h2>Tu Selección</h2>
+      <button class="close-drawer" id="closeCartBtn" aria-label="Cerrar carrito">&times;</button>
+    </div>
+
+    <div class="drawer-body" id="cartItemsContainer"></div>
+
+    <div class="drawer-footer" id="cartFooter">
+      <div class="subtotal-row">
+        <span>Subtotal</span>
+        <strong id="cartSubtotal">S/ 0.00</strong>
+      </div>
+      <p class="shipping-note">Envío gratuito en pedidos mayores a S/ 350.00</p>
+
+      <div class="checkout-form">
+        <input type="text" id="customerName" class="checkout-input" placeholder="Tu nombre completo *" />
+        <input type="text" id="customerAddress" class="checkout-input" placeholder="Ciudad y dirección de entrega *" />
+      </div>
+
+      <button class="btn-checkout-primary" id="whatsappCheckoutBtn">
+        Confirmar Pedido por WhatsApp
+      </button>
+      <button class="btn-checkout-secondary" id="simulateOrderBtn">
+        Registrar Compra Directa
+      </button>
+    </div>
+  </aside>
+
+  <!-- MODAL DE CONFIRMACIÓN DE COMPRA -->
+  <div class="modal-backdrop" id="orderModal" hidden>
+    <div class="modal-card">
+      <div class="modal-check">&#10003;</div>
+      <h3>¡Pedido registrado con éxito!</h3>
+      <p id="orderModalText">Hemos generado tu orden. Pronto nos comunicaremos contigo para coordinar la entrega.</p>
+      <button class="btn-dark-pill" id="closeOrderModalBtn">Seguir explorando</button>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       MODAL 1: INICIO DE SESIÓN DE ADMINISTRADOR
+       ====================================================================== -->
+  <div class="modal-backdrop" id="adminLoginModal" hidden>
+    <div class="modal-card login-modal-card">
+      <button class="modal-close-x" id="closeLoginModalBtn" aria-label="Cerrar">&times;</button>
+      <div class="login-lock-badge">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h3>Acceso Administrador</h3>
+      <p class="login-subtitle">Ingresa tus credenciales para gestionar el catálogo y reportes de ventas.</p>
+
+      <form id="adminLoginForm" class="login-form">
+        <div class="form-field">
+          <label for="adminUserInput">Correo o usuario</label>
+          <input type="text" id="adminUserInput" placeholder="admin@trazo.pe" required autocomplete="username" />
+        </div>
+        <div class="form-field">
+          <label for="adminPassInput">Contraseña</label>
+          <input type="password" id="adminPassInput" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <p class="login-error" id="loginErrorMsg" hidden>Credenciales incorrectas. Intenta nuevamente.</p>
+        <button type="submit" class="btn-checkout-primary">Ingresar al Panel</button>
+      </form>
+
+      <div class="demo-credentials-box">
+        <span>Acceso de prueba configurado:</span>
+        <code>admin@trazo.pe</code> &middot; <code>admin2026</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================
+       MODAL 2: PANEL DE ADMINISTRACIÓN (INVENTARIO + REPORTES DE VENTAS)
+       ====================================================================== -->
+  <div class="admin-overlay" id="adminPanelModal" hidden>
+    <div class="admin-shell">
+      <header class="admin-topbar">
+        <div class="admin-brand">
+          <span class="brand-logo">trazo<span>.</span></span>
+          <span class="admin-role-pill">Panel de Administración</span>
+        </div>
+
+        <div class="admin-tabs" role="tablist">
+          <button class="admin-tab active" data-admin-tab="inventory">Gestión de Productos</button>
+          <button class="admin-tab" data-admin-tab="reports">Reportes de Ventas</button>
+        </div>
+
+        <div class="admin-topbar-actions">
+          <button class="btn-outline-sm" id="closeAdminPanelBtn">Volver a la tienda</button>
+          <button class="btn-danger-sm" id="adminLogoutBtn">Cerrar sesión</button>
+        </div>
+      </header>
+
+      <!-- VISTA A: GESTIÓN DE PRODUCTOS -->
+      <div class="admin-body" id="adminInventoryView">
+        <div class="admin-grid-layout">
+          <section class="admin-card">
+            <h2 class="admin-card-title" id="productFormTitle">Subir Nuevo Artículo</h2>
+            <form id="productAdminForm" class="admin-form">
+              <input type="hidden" id="editProductId" value="" />
+
+              <div class="form-field">
+                <label for="prodName">Nombre del modelo *</label>
+                <input type="text" id="prodName" placeholder="Ej. Oxford Clásico Coñac o Cartera Tote" required />
+              </div>
+
+              <div class="form-row-2">
+                <div class="form-field">
+                  <label for="prodCategory">Apartado / Categoría *</label>
+                  <select id="prodCategory" required>
+                    <option value="Calzado Hombre">Calzado Hombre</option>
+                    <option value="Calzado Mujer">Calzado Mujer</option>
+                    <option value="Sandalias Tejidas">Sandalias Tejidas</option>
+                    <option value="Carteras">Carteras</option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="prodPrice">Precio (S/) *</label>
+                  <input type="number" id="prodPrice" min="1" step="0.5" placeholder="340.00" required />
+                </div>
+              </div>
+
+              <div class="form-row-2">
+                <div class="form-field">
+                  <label for="prodBadge">Etiqueta opcional</label>
+                  <input type="text" id="prodBadge" placeholder="Ej. Cuero Genuino, Tejido a Mano" />
+                </div>
+
+                <div class="form-field">
+                  <label for="prodSizes">Tallas (ej. 36, 37, 38 o Única) *</label>
+                  <input type="text" id="prodSizes" value="39, 40, 41, 42" required />
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label for="prodTags">Palabras clave de búsqueda</label>
+                <input type="text" id="prodTags" placeholder="vestir gala cuero tejido cartera..." />
+              </div>
+
+              <div class="form-field">
+                <label for="prodImageUrl">Imagen por URL o subir archivo desde tu PC *</label>
+                <input type="text" id="prodImageUrl" placeholder="https://... o selecciona un archivo abajo" />
+                <div class="file-upload-row">
+                  <label class="btn-file-upload" for="prodImageFile">
+                    Subir foto desde mi PC
+                  </label>
+                  <input type="file" id="prodImageFile" accept="image/*" hidden />
+                  <span class="file-hint" id="fileUploadStatus">JPG, PNG o WebP</span>
+                </div>
+              </div>
+
+              <div class="image-preview-box" id="prodPreviewBox" hidden>
+                <img id="prodPreviewImg" src="" alt="Vista previa" />
+              </div>
+
+              <div class="form-actions-row">
+                <button type="submit" class="btn-checkout-primary" id="saveProductBtn">Publicar Artículo</button>
+                <button type="button" class="btn-checkout-secondary" id="cancelEditBtn" hidden>Cancelar edición</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="admin-card">
+            <div class="admin-card-header-row">
+              <div>
+                <h2 class="admin-card-title">Catálogo Activo (<span id="adminProductCount">0</span>)</h2>
+                <p class="admin-card-sub">Edita precios, tallas, apartados o elimina modelos publicados.</p>
+              </div>
+              <button class="btn-outline-sm" id="restoreDefaultCatalogBtn" title="Restaurar los 10 artículos iniciales">
+                Restaurar catálogo base
+              </button>
+            </div>
+
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Artículo</th>
+                    <th>Apartado</th>
+                    <th>Tallas</th>
+                    <th>Precio</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="adminProductsTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- VISTA B: REPORTES DE VENTAS -->
+      <div class="admin-body" id="adminReportsView" hidden>
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">Ingresos Totales</span>
+            <strong class="kpi-value" id="kpiTotalRevenue">S/ 0.00</strong>
+            <span class="kpi-meta">Acumulado de ventas registradas</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Pedidos Realizados</span>
+            <strong class="kpi-value" id="kpiTotalOrders">0</strong>
+            <span class="kpi-meta">Órdenes web y WhatsApp</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Unidades Vendidas</span>
+            <strong class="kpi-value" id="kpiTotalPairs">0</strong>
+            <span class="kpi-meta">Calzados y carteras despachados</span>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Artículo Más Vendido</span>
+            <strong class="kpi-value kpi-sm" id="kpiTopProduct">—</strong>
+            <span class="kpi-meta" id="kpiTopProductSub">Sin datos aún</span>
+          </div>
+        </div>
+
+        <section class="admin-card">
+          <div class="admin-card-header-row">
+            <div>
+              <h2 class="admin-card-title">Historial de Ventas y Pedidos</h2>
+              <p class="admin-card-sub">Cada compra realizada en la tienda se registra automáticamente aquí.</p>
+            </div>
+
+            <div class="report-controls">
+              <select id="reportStatusFilter" class="sort-select">
+                <option value="all">Todos los estados</option>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Enviado">Enviado</option>
+                <option value="Entregado">Entregado</option>
+              </select>
+
+              <button class="btn-dark-pill" id="exportCsvBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Descargar Reporte Excel (.CSV)</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Fecha</th>
+                  <th>Cliente / Entrega</th>
+                  <th>Detalle del Pedido</th>
+                  <th>Canal</th>
+                  <th>Total</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="adminOrdersTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFICACIÓN TOAST -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
