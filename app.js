@@ -1,11 +1,6 @@
 // ==========================================================================
 // 1. CONFIGURACIÓN Y CATÁLOGO BASE (SOLO VESTIR, SANDALIAS TEJIDAS Y CARTERAS)
 // ==========================================================================
-const ADMIN_CREDENTIALS = {
-  email: "admin@trazo.pe",
-  password: "admin2026"
-};
-
 // Cambia este número por tu WhatsApp real con código de país (ej. 51999888777)
 const STORE_WHATSAPP = "51917233318";
 
@@ -165,47 +160,35 @@ const DEFAULT_PRODUCTS = [
   }
 ];
 
-const INITIAL_ORDERS = [
-  {
-    id: "TRZ-204821",
-    date: "2026-11-16T14:25:00",
-    customer: "Valeria Mendoza",
-    address: "Trujillo - Urb. California",
-    channel: "WhatsApp",
-    status: "Entregado",
-    items: [
-      { name: "Stiletto Salón Nude Clásico", size: "37", qty: 1, price: 339.0 },
-      { name: "Cartera Tote Estructurada Coñac", size: "Única", qty: 1, price: 359.0 }
-    ],
-    totalPairs: 2,
-    total: 698.0
-  },
-  {
-    id: "TRZ-204935",
-    date: "2026-11-17T10:15:00",
-    customer: "Carlos Paredes",
-    address: "Lima - Miraflores",
-    channel: "Web Directa",
-    status: "Enviado",
-    items: [
-      { name: "Oxford Cap-Toe Negro Ébano", size: "41", qty: 1, price: 389.0 },
-      { name: "Sandalia Tejida Trenza Arena", size: "37", qty: 1, price: 229.0 }
-    ],
-    totalPairs: 2,
-    total: 618.0
-  }
-];
-
 // ==========================================================================
 // 2. ESTADO GLOBAL PERSISTENTE
 // ==========================================================================
-const storedProducts = JSON.parse(localStorage.getItem("trazo_products_v2") || "null");
-const storedOrders = JSON.parse(localStorage.getItem("trazo_orders_v2") || "null");
+const supabaseConfig = window.SUPABASE_CONFIG || {};
+const supabaseReady =
+  Boolean(window.supabase && typeof window.supabase.createClient === "function") &&
+  typeof supabaseConfig.url === "string" &&
+  supabaseConfig.url.startsWith("https://") &&
+  !supabaseConfig.url.includes("YOUR_PROJECT_ID") &&
+  typeof supabaseConfig.anonKey === "string" &&
+  supabaseConfig.anonKey.length > 20 &&
+  !supabaseConfig.anonKey.includes("YOUR_SUPABASE");
+let supabaseClient = null;
+if (supabaseReady) {
+  try {
+    supabaseClient = window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey);
+  } catch (error) {
+    console.error("La configuración de Supabase no es válida:", error);
+  }
+}
+let inventoryStatus = supabaseClient ? "loading" : "unconfigured";
 
 const state = {
-  products: Array.isArray(storedProducts) && storedProducts.length > 0 ? storedProducts : [...DEFAULT_PRODUCTS],
-  orders: Array.isArray(storedOrders) ? storedOrders : [...INITIAL_ORDERS],
-  isAdmin: sessionStorage.getItem("trazo_admin_auth") === "true",
+  products: DEFAULT_PRODUCTS.map((product) => ({
+    ...product,
+    stockBySize: Object.fromEntries(product.sizes.map((size) => [String(size), 0]))
+  })),
+  orders: [],
+  isAdmin: false,
   category: "Todos",
   search: "",
   sort: "popular",
@@ -221,20 +204,13 @@ function syncSelectedSizes() {
   state.products.forEach((p) => {
     const normalizedSizes = p.sizes.map(String);
     p.sizes = normalizedSizes;
+    p.stockBySize = p.stockBySize || Object.fromEntries(normalizedSizes.map((size) => [size, 0]));
     if (!state.selectedSizes[p.id] || !normalizedSizes.includes(String(state.selectedSizes[p.id]))) {
       state.selectedSizes[p.id] = normalizedSizes[Math.floor(normalizedSizes.length / 2)] || normalizedSizes[0];
     }
   });
 }
 syncSelectedSizes();
-
-function saveProducts() {
-  localStorage.setItem("trazo_products_v2", JSON.stringify(state.products));
-}
-
-function saveOrders() {
-  localStorage.setItem("trazo_orders_v2", JSON.stringify(state.orders));
-}
 
 function saveUserLists() {
   localStorage.setItem("trazo_cart_v2", JSON.stringify(state.cart));
@@ -256,6 +232,7 @@ const maxPriceRange = document.getElementById("maxPriceRange");
 const maxPriceLabel = document.getElementById("maxPriceLabel");
 const activeSectionTitle = document.getElementById("activeSectionTitle");
 const activeSectionSub = document.getElementById("activeSectionSub");
+const databaseStatus = document.getElementById("databaseStatus");
 
 const cartDrawer = document.getElementById("cartDrawer");
 const cartBackdrop = document.getElementById("cartBackdrop");
@@ -271,6 +248,71 @@ const adminEntryLabel = document.getElementById("adminEntryLabel");
 const adminLoginModal = document.getElementById("adminLoginModal");
 const adminPanelModal = document.getElementById("adminPanelModal");
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[character]);
+}
+
+function setDatabaseStatus(message) {
+  databaseStatus.textContent = message;
+  databaseStatus.hidden = !message;
+}
+
+async function loadProductsFromDatabase() {
+  const { data, error } = await supabaseClient
+    .from("products")
+    .select("id, name, category, price, badge, badge_accent, is_new, popularity, tags, image, product_sizes(size, stock)")
+    .order("id");
+  if (error) {
+    inventoryStatus = "error";
+    throw error;
+  }
+
+  state.products = data.map((product) => {
+    const sizes = product.product_sizes.map((variant) => String(variant.size));
+    return {
+      id: Number(product.id),
+      name: product.name,
+      category: product.category,
+      price: Number(product.price),
+      badge: product.badge,
+      badgeAccent: product.badge_accent,
+      isNew: product.is_new,
+      popularity: product.popularity,
+      tags: product.tags,
+      image: product.image,
+      sizes,
+      stockBySize: Object.fromEntries(
+        product.product_sizes.map((variant) => [String(variant.size), Number(variant.stock)])
+      )
+    };
+  });
+  syncSelectedSizes();
+  let cartChanged = false;
+  state.cart.forEach((item) => {
+    const product = state.products.find((entry) => entry.id === item.id);
+    if (!product) return;
+    if (item.name !== product.name || item.price !== product.price || item.image !== product.image) {
+      item.name = product.name;
+      item.price = product.price;
+      item.image = product.image;
+      cartChanged = true;
+    }
+  });
+  if (cartChanged) {
+    saveUserLists();
+    renderCart();
+  }
+  inventoryStatus = "ready";
+  renderProducts();
+  setDatabaseStatus("");
+}
+
 // ==========================================================================
 // 4. TIENDA PÚBLICA: CAMBIO DE APARTADOS, FILTROS Y RENDERIZADO
 // ==========================================================================
@@ -280,10 +322,6 @@ function setActiveCategory(cat) {
 
   document.querySelectorAll("#categoryPills .pill").forEach((el) => {
     el.classList.toggle("active", el.dataset.category === cat);
-  });
-
-  document.querySelectorAll(".dept-card").forEach((card) => {
-    card.classList.toggle("active-dept", card.dataset.deptCat === cat);
   });
 
   const info = SECTION_DESCRIPTIONS[cat] || SECTION_DESCRIPTIONS["Todos"];
@@ -331,6 +369,13 @@ function getFilteredProducts() {
     });
 }
 
+function getCartQuantity(productId, size) {
+  const item = state.cart.find(
+    (cartItem) => cartItem.id === productId && String(cartItem.size) === String(size)
+  );
+  return item ? item.qty : 0;
+}
+
 function renderProducts() {
   syncSelectedSizes();
   const filtered = getFilteredProducts();
@@ -349,19 +394,27 @@ function renderProducts() {
     .map((product) => {
       const isFav = state.wishlist.includes(product.id);
       const activeSize = String(state.selectedSizes[product.id]);
+      const selectedStock = Number(product.stockBySize[activeSize] || 0);
+      const selectedAvailableStock = selectedStock - getCartQuantity(product.id, activeSize);
+      const canAddSelectedSize =
+        inventoryStatus === "ready" && selectedAvailableStock > 0;
 
       const sizesHTML = product.sizes
-        .map(
-          (size) => `
+        .map((size) => {
+          const stock = Number(product.stockBySize[String(size)] || 0);
+          const available = inventoryStatus === "ready" && stock > getCartQuantity(product.id, size);
+          return `
           <button
             type="button"
-            class="size-option ${String(size) === activeSize ? "selected" : ""}"
+            class="size-option ${String(size) === activeSize ? "selected" : ""} ${available ? "" : "out-of-stock"}"
             data-action="select-size"
             data-id="${product.id}"
-            data-size="${size}"
-          >${size === "Única" ? "Talla Única" : size}</button>
-        `
-        )
+            data-size="${escapeHtml(size)}"
+            aria-label="${escapeHtml(`${size === "Única" ? "Talla única" : `Talla ${size}`}${available ? ", disponible" : inventoryStatus === "ready" ? ", agotada" : ", stock no disponible"}`)}"
+            ${available ? "" : "disabled"}
+          >${escapeHtml(size === "Única" ? "Talla Única" : size)}</button>
+        `;
+        })
         .join("");
 
       return `
@@ -371,7 +424,7 @@ function renderProducts() {
               product.badge
                 ? `<span class="card-badge ${
                     product.badgeAccent ? "accent" : ""
-                  }">${product.badge}</span>`
+                  }">${escapeHtml(product.badge)}</span>`
                 : ""
             }
             <button
@@ -386,18 +439,21 @@ function renderProducts() {
               </svg>
             </button>
             <img
-              src="${product.image}"
-              alt="${product.name}"
+              src="${escapeHtml(product.image)}"
+              alt="${escapeHtml(product.name)}"
               loading="lazy"
               onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%23f8f7f4%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22sans-serif%22 font-size=%2216%22 fill=%22%236e6d7a%22>${encodeURIComponent(product.name)}</text></svg>'"
             />
           </div>
 
           <div class="card-header">
-            <h3 class="card-title">${product.name}</h3>
+            <h3 class="card-title">${escapeHtml(product.name)}</h3>
             <span class="card-price">S/ ${Number(product.price).toFixed(2)}</span>
           </div>
-          <p class="card-category">${product.category}</p>
+          <p class="card-category">${escapeHtml(product.category)}</p>
+          <p class="card-stock ${selectedAvailableStock > 0 ? "" : "out-of-stock"}">
+            ${inventoryStatus === "unconfigured" ? "Stock pendiente de configurar" : inventoryStatus === "loading" ? "Cargando stock..." : inventoryStatus === "error" ? "Stock no disponible" : selectedAvailableStock > 0 ? "Disponible" : "Agotado"}
+          </p>
 
           <div class="card-sizes" aria-label="Seleccionar talla o medida">
             ${sizesHTML}
@@ -408,8 +464,9 @@ function renderProducts() {
             class="btn-add-cart"
             data-action="add-cart"
             data-id="${product.id}"
+            ${canAddSelectedSize ? "" : "disabled"}
           >
-            Agregar al carrito
+            ${canAddSelectedSize ? "Agregar al carrito" : inventoryStatus === "ready" ? "Agotado" : "No disponible"}
           </button>
         </article>
       `;
@@ -431,6 +488,12 @@ function addToCart(productId) {
   const size = String(state.selectedSizes[productId]);
   if (!product) return;
 
+  const stock = Number(product.stockBySize[size] || 0);
+  if (inventoryStatus !== "ready" || getCartQuantity(productId, size) >= stock) {
+    showToast(stock === 0 ? "Esta talla está agotada" : "No hay más unidades disponibles de esta talla");
+    return;
+  }
+
   const existing = state.cart.find(
     (item) => item.id === productId && String(item.size) === size
   );
@@ -451,11 +514,26 @@ function addToCart(productId) {
   saveUserLists();
   updateBadges();
   renderCart();
+  renderProducts();
   const sizeText = size === "Única" ? "Talla Única" : `Talla ${size}`;
   showToast(`Agregado: ${product.name} (${sizeText})`);
 }
 
 function changeCartQty(index, delta) {
+  const item = state.cart[index];
+  if (!item) return;
+  if (delta > 0) {
+    const product = state.products.find((entry) => entry.id === item.id);
+    if (
+      inventoryStatus !== "ready" ||
+      !product ||
+      item.qty >= Number(product.stockBySize[String(item.size)] || 0)
+    ) {
+      showToast("No hay más unidades disponibles de esta talla");
+      return;
+    }
+  }
+
   state.cart[index].qty += delta;
   if (state.cart[index].qty <= 0) {
     state.cart.splice(index, 1);
@@ -463,6 +541,7 @@ function changeCartQty(index, delta) {
   saveUserLists();
   updateBadges();
   renderCart();
+  renderProducts();
 }
 
 function renderCart() {
@@ -483,10 +562,10 @@ function renderCart() {
       const sizeLabel = item.size === "Única" ? "Talla Única" : `Talla ${item.size}`;
       return `
         <div class="cart-item">
-          <img src="${item.image}" alt="${item.name}" />
+          <img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" />
           <div>
-            <div class="cart-item-title">${item.name}</div>
-            <div class="cart-item-meta">${sizeLabel} &middot; S/ ${item.price.toFixed(2)}</div>
+            <div class="cart-item-title">${escapeHtml(item.name)}</div>
+            <div class="cart-item-meta">${escapeHtml(sizeLabel)} &middot; S/ ${item.price.toFixed(2)}</div>
             <div class="qty-controls">
               <button class="qty-btn" data-cart-idx="${idx}" data-delta="-1">-</button>
               <span>${item.qty}</span>
@@ -500,34 +579,6 @@ function renderCart() {
     .join("");
 
   cartSubtotal.textContent = `S/ ${subtotal.toFixed(2)}`;
-}
-
-function recordOrder(channel, orderId) {
-  const name = document.getElementById("customerName").value.trim() || "Cliente Web";
-  const address = document.getElementById("customerAddress").value.trim() || "Por coordinar";
-  const total = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const totalPairs = state.cart.reduce((sum, item) => sum + item.qty, 0);
-
-  const newOrder = {
-    id: orderId,
-    date: new Date().toISOString(),
-    customer: name,
-    address: address,
-    channel: channel,
-    status: "Pendiente",
-    items: state.cart.map((i) => ({
-      name: i.name,
-      size: i.size,
-      qty: i.qty,
-      price: i.price
-    })),
-    totalPairs,
-    total
-  };
-
-  state.orders.unshift(newOrder);
-  saveOrders();
-  return newOrder;
 }
 
 function openCart() {
@@ -564,48 +615,132 @@ function updateAdminUIState() {
   }
 }
 
+async function verifyAdminUser(userId) {
+  const { data, error } = await supabaseClient
+    .from("admin_users")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function loadOrdersFromDatabase() {
+  const { data, error } = await supabaseClient
+    .from("orders")
+    .select("order_code, created_at, status, total, total_items, channel, delivery_address, customers(full_name, phone), order_items(product_name, size, quantity, unit_price, subtotal)")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  state.orders = data.map((order) => {
+    const customer = Array.isArray(order.customers)
+      ? (order.customers[0] || {})
+      : (order.customers || {});
+    return {
+      id: order.order_code,
+      date: order.created_at,
+      customer: customer.full_name || "Cliente",
+      phone: customer.phone || "",
+      address: order.delivery_address,
+      channel: order.channel,
+      status: order.status,
+      totalPairs: order.total_items,
+      total: Number(order.total),
+      items: order.order_items.map((item) => ({
+        name: item.product_name,
+        size: item.size,
+        qty: item.quantity,
+        price: Number(item.unit_price),
+        subtotal: Number(item.subtotal)
+      }))
+    };
+  });
+}
+
 function handleAdminEntryClick(e) {
   if (e) e.preventDefault();
   if (state.isAdmin) {
     openAdminPanel();
   } else {
-    document.getElementById("loginErrorMsg").hidden = true;
+    const loginError = document.getElementById("loginErrorMsg");
+    loginError.textContent = supabaseClient
+      ? "No se pudo iniciar sesión. Revisa tu cuenta e inténtalo de nuevo."
+      : "La base de datos aún no está configurada.";
+    loginError.hidden = false;
     adminLoginModal.hidden = false;
   }
 }
 
-function openAdminPanel() {
+async function openAdminPanel() {
   if (!state.isAdmin) return;
-  renderAdminProductsTable();
-  renderSalesReports();
-  adminPanelModal.hidden = false;
+  try {
+    await Promise.all([loadProductsFromDatabase(), loadOrdersFromDatabase()]);
+    renderAdminProductsTable();
+    renderSalesReports();
+    adminPanelModal.hidden = false;
+  } catch (error) {
+    console.error("No se pudo cargar el panel de administración:", error);
+    showToast("No se pudieron cargar los datos del panel. Revisa la conexión.");
+  }
 }
 
 function closeAdminPanel() {
   adminPanelModal.hidden = true;
 }
 
-document.getElementById("adminLoginForm").addEventListener("submit", (e) => {
+document.getElementById("adminLoginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (!supabaseClient) {
+    document.getElementById("loginErrorMsg").textContent = "La base de datos aún no está configurada.";
+    document.getElementById("loginErrorMsg").hidden = false;
+    return;
+  }
+
   const user = document.getElementById("adminUserInput").value.trim();
   const pass = document.getElementById("adminPassInput").value.trim();
+  const loginError = document.getElementById("loginErrorMsg");
+  const submitButton = e.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
 
-  if (user === ADMIN_CREDENTIALS.email && pass === ADMIN_CREDENTIALS.password) {
+  try {
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: user,
+      password: pass
+    });
+    if (error) throw error;
+
+    if (!(await verifyAdminUser(data.user.id))) {
+      await supabaseClient.auth.signOut();
+      loginError.textContent = "Esta cuenta no tiene permisos de administración.";
+      loginError.hidden = false;
+      return;
+    }
+
     state.isAdmin = true;
-    sessionStorage.setItem("trazo_admin_auth", "true");
     adminLoginModal.hidden = true;
     document.getElementById("adminLoginForm").reset();
     updateAdminUIState();
-    openAdminPanel();
+    await openAdminPanel();
     showToast("Sesión de administrador iniciada");
-  } else {
-    document.getElementById("loginErrorMsg").hidden = false;
+  } catch (error) {
+    console.error("No se pudo iniciar sesión de administrador:", error);
+    loginError.textContent = "No se pudo iniciar sesión. Verifica tu correo y contraseña.";
+    loginError.hidden = false;
+  } finally {
+    submitButton.disabled = false;
   }
 });
 
-document.getElementById("adminLogoutBtn").addEventListener("click", () => {
+document.getElementById("adminLogoutBtn").addEventListener("click", async () => {
+  if (supabaseClient) {
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      console.error("No se pudo cerrar la sesión de Supabase:", error);
+      showToast("No se pudo cerrar la sesión. Inténtalo nuevamente.");
+      return;
+    }
+  }
   state.isAdmin = false;
-  sessionStorage.removeItem("trazo_admin_auth");
   updateAdminUIState();
   closeAdminPanel();
   showToast("Sesión de administrador cerrada");
@@ -627,7 +762,14 @@ document.querySelectorAll(".admin-tab").forEach((tab) => {
     document.getElementById("adminInventoryView").hidden = target !== "inventory";
     document.getElementById("adminReportsView").hidden = target !== "reports";
 
-    if (target === "reports") renderSalesReports();
+    if (target === "reports") {
+      loadOrdersFromDatabase()
+        .then(renderSalesReports)
+        .catch((error) => {
+          console.error("No se pudieron cargar los pedidos:", error);
+          showToast("No se pudieron cargar los pedidos.");
+        });
+    }
     if (target === "inventory") renderAdminProductsTable();
   });
 });
@@ -648,11 +790,11 @@ prodCategorySelect.addEventListener("change", () => {
   if (document.getElementById("editProductId").value) return;
   const cat = prodCategorySelect.value;
   if (cat === "Carteras") {
-    prodSizesInput.value = "Única";
+    prodSizesInput.value = "Única:0";
   } else if (cat === "Calzado Mujer" || cat === "Sandalias Tejidas") {
-    prodSizesInput.value = "35, 36, 37, 38, 39";
+    prodSizesInput.value = "35:0, 36:0, 37:0, 38:0, 39:0";
   } else {
-    prodSizesInput.value = "39, 40, 41, 42, 43";
+    prodSizesInput.value = "39:0, 40:0, 41:0, 42:0, 43:0";
   }
 });
 
@@ -700,15 +842,52 @@ function resetProductForm() {
   document.getElementById("saveProductBtn").textContent = "Publicar Artículo";
   document.getElementById("cancelEditBtn").hidden = true;
   document.getElementById("fileUploadStatus").textContent = "JPG, PNG o WebP";
-  prodSizesInput.value = "39, 40, 41, 42";
+  prodSizesInput.value = "39:0, 40:0, 41:0, 42:0";
   prodPreviewBox.hidden = true;
 }
 
 document.getElementById("cancelEditBtn").addEventListener("click", resetProductForm);
 
-productAdminForm.addEventListener("submit", (e) => {
+function parseStockEntries(input) {
+  const entries = input.split(",").map((entry) => entry.trim()).filter(Boolean);
+  if (entries.length === 0) throw new Error("Agrega al menos una talla y su stock.");
+
+  const stockBySize = {};
+  entries.forEach((entry) => {
+    const match = entry.match(/^([^:]+):\s*(\d+)$/);
+    if (!match) throw new Error(`Formato inválido: "${entry}". Usa talla:unidades.`);
+    const size = match[1].trim();
+    const stock = Number(match[2]);
+    if (!size || !Number.isSafeInteger(stock) || Object.prototype.hasOwnProperty.call(stockBySize, size)) {
+      throw new Error(`Revisa la talla o las unidades de "${entry}".`);
+    }
+    stockBySize[size] = stock;
+  });
+
+  return stockBySize;
+}
+
+function formatStockEntries(product) {
+  return product.sizes
+    .map((size) => `${size}:${Number(product.stockBySize[String(size)] || 0)}`)
+    .join(", ");
+}
+
+async function refreshAdminCatalog() {
+  try {
+    await loadProductsFromDatabase();
+    renderAdminProductsTable();
+  } catch (error) {
+    console.error("No se pudo actualizar el catálogo desde la base de datos:", error);
+    renderProducts();
+    setDatabaseStatus("No se pudo actualizar el catálogo. Verifica tu conexión.");
+    showToast("El cambio se guardó, pero no se pudo actualizar la vista.");
+  }
+}
+
+productAdminForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!state.isAdmin) return;
+  if (!state.isAdmin || !supabaseClient) return;
 
   const editId = document.getElementById("editProductId").value;
   const name = document.getElementById("prodName").value.trim();
@@ -720,60 +899,52 @@ productAdminForm.addEventListener("submit", (e) => {
     prodImageUrlInput.value.trim() ||
     "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?auto=format&fit=crop&w=800&q=80";
 
-  const parsedSizes = prodSizesInput.value
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-
-  const sizes =
-    parsedSizes.length > 0
-      ? parsedSizes
-      : category === "Carteras"
-      ? ["Única"]
-      : ["38", "39", "40", "41"];
-
-  if (editId) {
-    const index = state.products.findIndex((p) => p.id === Number(editId));
-    if (index > -1) {
-      state.products[index] = {
-        ...state.products[index],
-        name,
-        category,
-        price,
-        badge,
-        badgeAccent: Boolean(badge),
-        sizes,
-        tags,
-        image
-      };
-      showToast("Artículo actualizado correctamente");
-    }
-  } else {
-    const newId =
-      state.products.length > 0
-        ? Math.max(...state.products.map((p) => p.id)) + 1
-        : 1;
-
-    state.products.unshift({
-      id: newId,
-      name,
-      category,
-      price,
-      badge: badge || "Nuevo",
-      badgeAccent: true,
-      isNew: true,
-      popularity: 99,
-      sizes,
-      tags: `${name.toLowerCase()} ${category.toLowerCase()} ${tags.toLowerCase()}`,
-      image
-    });
-    showToast("Nuevo artículo publicado en la tienda");
+  let stockBySize;
+  try {
+    stockBySize = parseStockEntries(prodSizesInput.value);
+  } catch (error) {
+    showToast(error.message);
+    prodSizesInput.focus();
+    return;
   }
 
-  saveProducts();
-  renderAdminProductsTable();
-  renderProducts();
-  resetProductForm();
+  const currentProduct = state.products.find((product) => product.id === Number(editId));
+  const product = {
+    name,
+    category,
+    price,
+    badge: badge || (editId ? "" : "Nuevo"),
+    badge_accent: Boolean(badge),
+    is_new: editId ? Boolean(currentProduct && currentProduct.isNew) : true,
+    popularity: editId ? (currentProduct ? currentProduct.popularity : 80) : 99,
+    tags: tags || `${name.toLowerCase()} ${category.toLowerCase()}`,
+    image
+  };
+  const sizes = Object.entries(stockBySize).map(([size, stock]) => ({ size, stock }));
+  const saveButton = document.getElementById("saveProductBtn");
+  saveButton.disabled = true;
+
+  try {
+    const { error } = await supabaseClient.rpc("save_product", {
+      p_product_id: editId ? Number(editId) : null,
+      p_product: product,
+      p_sizes: sizes
+    });
+    if (error) throw error;
+
+    showToast(editId ? "Artículo actualizado correctamente" : "Nuevo artículo publicado en la tienda");
+    resetProductForm();
+    await refreshAdminCatalog();
+  } catch (error) {
+    console.error("No se pudo guardar el producto:", error);
+    showToast(
+      error.message.includes("SIZE_HAS_STOCK_OR_PENDING_ORDER")
+        ? "No puedes quitar tallas con stock o pedidos pendientes."
+        : "No se pudo guardar el producto. Revisa los datos e inténtalo de nuevo."
+    );
+  } finally {
+    saveButton.disabled = false;
+  }
 });
 
 function renderAdminProductsTable() {
@@ -786,15 +957,15 @@ function renderAdminProductsTable() {
       <tr>
         <td>
           <div class="table-prod-cell">
-            <img src="${prod.image}" alt="${prod.name}" />
+            <img src="${escapeHtml(prod.image)}" alt="${escapeHtml(prod.name)}" />
             <div>
-              <strong>${prod.name}</strong>
-              <div style="font-size:0.75rem; color:var(--text-secondary);">${prod.badge || "Sin etiqueta"}</div>
+              <strong>${escapeHtml(prod.name)}</strong>
+              <div style="font-size:0.75rem; color:var(--text-secondary);">${escapeHtml(prod.badge || "Sin etiqueta")}</div>
             </div>
           </div>
         </td>
-        <td>${prod.category}</td>
-        <td>${prod.sizes.join(", ")}</td>
+        <td>${escapeHtml(prod.category)}</td>
+        <td>${escapeHtml(formatStockEntries(prod))}</td>
         <td><strong>S/ ${Number(prod.price).toFixed(2)}</strong></td>
         <td>
           <div class="table-actions">
@@ -808,7 +979,7 @@ function renderAdminProductsTable() {
     .join("");
 }
 
-document.getElementById("adminProductsTableBody").addEventListener("click", (e) => {
+document.getElementById("adminProductsTableBody").addEventListener("click", async (e) => {
   const btn = e.target.closest("button");
   if (!btn || !state.isAdmin) return;
 
@@ -824,7 +995,7 @@ document.getElementById("adminProductsTableBody").addEventListener("click", (e) 
     prodCategorySelect.value = prod.category;
     document.getElementById("prodPrice").value = prod.price;
     document.getElementById("prodBadge").value = prod.badge || "";
-    prodSizesInput.value = prod.sizes.join(", ");
+    prodSizesInput.value = formatStockEntries(prod);
     document.getElementById("prodTags").value = prod.tags || "";
     prodImageUrlInput.value = prod.image;
     prodPreviewImg.src = prod.image;
@@ -837,23 +1008,20 @@ document.getElementById("adminProductsTableBody").addEventListener("click", (e) 
     const prod = state.products.find((p) => p.id === id);
     if (!prod) return;
     if (confirm(`¿Seguro que deseas eliminar "${prod.name}" del catálogo?`)) {
-      state.products = state.products.filter((p) => p.id !== id);
-      saveProducts();
-      renderAdminProductsTable();
-      renderProducts();
-      showToast("Artículo eliminado");
+      try {
+        const { error } = await supabaseClient.rpc("delete_product", { p_product_id: id });
+        if (error) throw error;
+        showToast("Artículo eliminado");
+        await refreshAdminCatalog();
+      } catch (error) {
+        console.error("No se pudo eliminar el producto:", error);
+        showToast(
+          error.message.includes("PRODUCT_HAS_PENDING_ORDERS")
+            ? "No puedes eliminar un artículo con pedidos pendientes."
+            : "No se pudo eliminar el artículo."
+        );
+      }
     }
-  }
-});
-
-document.getElementById("restoreDefaultCatalogBtn").addEventListener("click", () => {
-  if (!state.isAdmin) return;
-  if (confirm("¿Restaurar los 10 artículos iniciales de vestir, sandalias tejidas y carteras?")) {
-    state.products = [...DEFAULT_PRODUCTS];
-    saveProducts();
-    renderAdminProductsTable();
-    renderProducts();
-    showToast("Catálogo base restaurado");
   }
 });
 
@@ -867,12 +1035,13 @@ function renderSalesReports() {
       ? state.orders
       : state.orders.filter((o) => o.status === filterStatus);
 
-  const totalRevenue = state.orders.reduce((sum, o) => sum + o.total, 0);
+  const activeOrders = state.orders.filter((order) => order.status !== "Cancelado");
+  const totalRevenue = activeOrders.reduce((sum, o) => sum + o.total, 0);
   const totalOrders = state.orders.length;
-  const totalPairs = state.orders.reduce((sum, o) => sum + o.totalPairs, 0);
+  const totalPairs = activeOrders.reduce((sum, o) => sum + o.totalPairs, 0);
 
   const productSalesMap = {};
-  state.orders.forEach((order) => {
+  activeOrders.forEach((order) => {
     order.items.forEach((item) => {
       productSalesMap[item.name] = (productSalesMap[item.name] || 0) + item.qty;
     });
@@ -911,25 +1080,27 @@ function renderSalesReports() {
       });
 
       const itemsSummary = order.items
-        .map((i) => `${i.qty}x ${i.name} (${i.size === "Única" ? "Única" : "T." + i.size})`)
+        .map((i) => escapeHtml(`${i.qty}x ${i.name} (${i.size === "Única" ? "Única" : "T." + i.size})`))
         .join("<br/>");
 
       return `
         <tr>
-          <td><strong>${order.id}</strong></td>
+          <td><strong>${escapeHtml(order.id)}</strong></td>
           <td>${dateStr}</td>
           <td>
-            <strong>${order.customer}</strong>
-            <div style="font-size:0.76rem; color:var(--text-secondary);">${order.address}</div>
+            <strong>${escapeHtml(order.customer)}</strong>
+            ${order.phone ? `<div style="font-size:0.76rem; color:var(--text-secondary);">WhatsApp: ${escapeHtml(order.phone)}</div>` : ""}
+            <div style="font-size:0.76rem; color:var(--text-secondary);">${escapeHtml(order.address)}</div>
           </td>
           <td>${itemsSummary}</td>
-          <td>${order.channel}</td>
+          <td>${escapeHtml(order.channel)}</td>
           <td><strong>S/ ${order.total.toFixed(2)}</strong></td>
           <td>
-            <select class="status-select" data-order-id="${order.id}">
+            <select class="status-select" data-order-id="${escapeHtml(order.id)}" ${order.status === "Cancelado" ? "disabled" : ""}>
               <option value="Pendiente" ${order.status === "Pendiente" ? "selected" : ""}>Pendiente</option>
               <option value="Enviado" ${order.status === "Enviado" ? "selected" : ""}>Enviado</option>
               <option value="Entregado" ${order.status === "Entregado" ? "selected" : ""}>Entregado</option>
+              <option value="Cancelado" ${order.status === "Cancelado" ? "selected" : ""}>Cancelado</option>
             </select>
           </td>
         </tr>
@@ -940,21 +1111,45 @@ function renderSalesReports() {
 
 document.getElementById("reportStatusFilter").addEventListener("change", renderSalesReports);
 
-document.getElementById("adminOrdersTableBody").addEventListener("change", (e) => {
+document.getElementById("adminOrdersTableBody").addEventListener("change", async (e) => {
   const select = e.target.closest(".status-select");
   if (!select || !state.isAdmin) return;
   const order = state.orders.find((o) => o.id === select.dataset.orderId);
-  if (order) {
+  if (!order) return;
+
+  const previousStatus = order.status;
+  select.disabled = true;
+  try {
+    const { error } = await supabaseClient.rpc("set_order_status", {
+      p_order_code: order.id,
+      p_status: select.value
+    });
+    if (error) throw error;
+
     order.status = select.value;
-    saveOrders();
+    renderSalesReports();
     showToast(`Pedido ${order.id} actualizado a ${order.status}`);
+    if (order.status === "Cancelado") {
+      try {
+        await loadProductsFromDatabase();
+      } catch (refreshError) {
+        console.error("No se pudo actualizar el inventario tras cancelar el pedido:", refreshError);
+        renderProducts();
+        setDatabaseStatus("Pedido cancelado; recarga la página para ver el stock actualizado.");
+      }
+    }
+  } catch (error) {
+    console.error("No se pudo actualizar el estado del pedido:", error);
+    select.value = previousStatus;
+    select.disabled = false;
+    showToast("No se pudo actualizar el pedido.");
   }
 });
 
 document.getElementById("exportCsvBtn").addEventListener("click", () => {
   if (!state.isAdmin) return;
 
-  const headers = ["Codigo", "Fecha", "Cliente", "Direccion", "Canal", "Estado", "Unidades", "Detalle", "Total_Soles"];
+  const headers = ["Codigo", "Fecha", "Cliente", "Telefono", "Direccion", "Canal", "Estado", "Unidades", "Detalle", "Total_Soles"];
   const rows = state.orders.map((o) => {
     const fecha = new Date(o.date).toLocaleString("es-PE").replace(",", "");
     const detalle = o.items.map((i) => `${i.qty}x ${i.name} (${i.size})`).join(" | ");
@@ -962,6 +1157,7 @@ document.getElementById("exportCsvBtn").addEventListener("click", () => {
       o.id,
       `"${fecha}"`,
       `"${o.customer.replace(/"/g, '""')}"`,
+      `"${o.phone.replace(/"/g, '""')}"`,
       `"${o.address.replace(/"/g, '""')}"`,
       o.channel,
       o.status,
@@ -1024,14 +1220,6 @@ document.getElementById("categoryPills").addEventListener("click", (e) => {
   setActiveCategory(pill.dataset.category);
 });
 
-// Tarjetas de Apartados (Hombre, Mujer, Sandalias Tejidas, Carteras)
-document.getElementById("departmentsGrid").addEventListener("click", (e) => {
-  const card = e.target.closest(".dept-card");
-  if (!card) return;
-  setActiveCategory(card.dataset.deptCat);
-  document.getElementById("catalogo").scrollIntoView({ behavior: "smooth" });
-});
-
 // Enlaces de navegación (Header y Footer)
 document.querySelectorAll("[data-nav-cat]").forEach((link) => {
   link.addEventListener("click", () => {
@@ -1050,16 +1238,6 @@ clearSearchBtn.addEventListener("click", () => {
   state.search = "";
   clearSearchBtn.hidden = true;
   renderProducts();
-});
-
-document.getElementById("trendingTags").addEventListener("click", (e) => {
-  const tag = e.target.closest(".trend-tag");
-  if (!tag) return;
-  searchInput.value = tag.dataset.search;
-  state.search = tag.dataset.search;
-  clearSearchBtn.hidden = false;
-  renderProducts();
-  document.getElementById("catalogo").scrollIntoView({ behavior: "smooth" });
 });
 
 sortSelect.addEventListener("change", (e) => {
@@ -1124,13 +1302,22 @@ cartItemsContainer.addEventListener("click", (e) => {
   changeCartQty(Number(btn.dataset.cartIdx), Number(btn.dataset.delta));
 });
 
-document.getElementById("whatsappCheckoutBtn").addEventListener("click", () => {
+document.getElementById("whatsappCheckoutBtn").addEventListener("click", async (e) => {
   if (state.cart.length === 0) {
     showToast("Agrega al menos un artículo primero");
     return;
   }
+  if (!supabaseClient) {
+    showToast("La tienda aún no tiene la base de datos configurada.");
+    return;
+  }
+  if (inventoryStatus !== "ready") {
+    showToast("No se pudo cargar el inventario. Inténtalo nuevamente en unos momentos.");
+    return;
+  }
 
   const customerName = document.getElementById("customerName");
+  const customerPhone = document.getElementById("customerPhone");
   const customerAddress = document.getElementById("customerAddress");
   if (!customerName.value.trim() || !customerAddress.value.trim()) {
     showToast("Completa tu nombre y dirección para continuar");
@@ -1138,43 +1325,85 @@ document.getElementById("whatsappCheckoutBtn").addEventListener("click", () => {
     return;
   }
 
-  const lines = state.cart.map(
-    (item) =>
-      `- ${item.name}\n  Talla: ${item.size === "Única" ? "Única" : item.size}\n  Cantidad: ${item.qty}\n  Precio unitario: S/ ${item.price.toFixed(2)}\n  Importe: S/ ${(item.price * item.qty).toFixed(2)}`
-  );
-  const total = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const totalItems = state.cart.reduce((sum, item) => sum + item.qty, 0);
-  const orderId = "TRZ-" + Math.floor(100000 + Math.random() * 900000);
-  const message = [
-    "Hola, quiero realizar este pedido en trazo.",
-    `Pedido: ${orderId}`,
-    "",
-    "PRODUCTOS:",
-    ...lines,
-    "",
-    `Total (${totalItems} ${totalItems === 1 ? "artículo" : "artículos"}): S/ ${total.toFixed(2)}`,
-    "",
-    "DATOS PARA LA ENTREGA:",
-    `Nombre: ${customerName.value.trim()}`,
-    `Dirección: ${customerAddress.value.trim()}`,
-    "",
-    "Por favor, confirmen disponibilidad y costo de envío."
-  ].join("\n");
-  const whatsappUrl = `https://wa.me/${STORE_WHATSAPP}?text=${encodeURIComponent(message)}`;
-  const whatsappWindow = window.open(whatsappUrl, "_blank");
+  const whatsappWindow = window.open("about:blank", "_blank");
   if (!whatsappWindow) {
     showToast("No se pudo abrir WhatsApp. Permite las ventanas emergentes e inténtalo de nuevo.");
     return;
   }
-  whatsappWindow.opener = null;
+  const submitButton = e.currentTarget;
+  submitButton.disabled = true;
 
-  recordOrder("WhatsApp", orderId);
-  state.cart = [];
-  saveUserLists();
-  updateBadges();
-  renderCart();
-  closeCart();
-  showToast("Pedido preparado. Confirma el envío desde WhatsApp.");
+  try {
+    const { data, error } = await supabaseClient.rpc("place_order", {
+      p_customer_name: customerName.value.trim(),
+      p_customer_address: customerAddress.value.trim(),
+      p_customer_phone: customerPhone.value.trim(),
+      p_items: state.cart.map((item) => ({
+        product_id: item.id,
+        size: String(item.size),
+        quantity: item.qty
+      }))
+    });
+    if (error) throw error;
+
+    const lines = data.items.map(
+      (item) =>
+        `- ${item.name}\n  Talla: ${item.size === "Única" ? "Única" : item.size}\n  Cantidad: ${item.quantity}\n  Precio unitario: S/ ${Number(item.price).toFixed(2)}\n  Importe: S/ ${Number(item.subtotal).toFixed(2)}`
+    );
+    const message = [
+      "Hola, quiero realizar este pedido en trazo.",
+      `Pedido: ${data.order_id}`,
+      "",
+      "PRODUCTOS:",
+      ...lines,
+      "",
+      `Total (${data.total_items} ${data.total_items === 1 ? "artículo" : "artículos"}): S/ ${Number(data.total).toFixed(2)}`,
+      "",
+      "DATOS PARA LA ENTREGA:",
+      `Nombre: ${customerName.value.trim()}`,
+      ...(customerPhone.value.trim() ? [`WhatsApp: ${customerPhone.value.trim()}`] : []),
+      `Dirección: ${customerAddress.value.trim()}`,
+      "",
+      "Por favor, confirmen el pedido y coordinen el envío."
+    ].join("\n");
+
+    whatsappWindow.location.href =
+      `https://wa.me/${STORE_WHATSAPP}?text=${encodeURIComponent(message)}`;
+    whatsappWindow.opener = null;
+
+    data.items.forEach((item) => {
+      const product = state.products.find((entry) => entry.id === Number(item.product_id));
+      if (product) product.stockBySize[String(item.size)] = Number(item.remaining_stock);
+    });
+    state.cart = [];
+    saveUserLists();
+    updateBadges();
+    renderCart();
+    renderProducts();
+    closeCart();
+    customerName.value = "";
+    customerPhone.value = "";
+    customerAddress.value = "";
+    showToast("Pedido registrado. Confirma el envío desde WhatsApp.");
+  } catch (error) {
+    whatsappWindow.close();
+    console.error("No se pudo registrar el pedido:", error);
+    if (error.message.includes("STOCK_UNAVAILABLE")) {
+      showToast("Una talla se agotó mientras comprabas. Actualizamos el inventario.");
+      try {
+        await loadProductsFromDatabase();
+      } catch (refreshError) {
+        console.error("No se pudo actualizar el inventario:", refreshError);
+        inventoryStatus = "error";
+        renderProducts();
+        setDatabaseStatus("No se pudo actualizar el inventario. Recarga la página.");
+      }
+    } else {
+      showToast("No se pudo registrar el pedido. Revisa tu conexión e inténtalo de nuevo.");
+    }
+  } finally {
+    submitButton.disabled = false;
+  }
 });
 
 // Inicializar aplicación
@@ -1182,3 +1411,28 @@ updateAdminUIState();
 updateBadges();
 renderProducts();
 renderCart();
+
+async function initializeStore() {
+  if (!supabaseClient) {
+    setDatabaseStatus("Inventario pendiente de configurar en Supabase. Las tallas aparecen sin stock.");
+    return;
+  }
+
+  setDatabaseStatus("Conectando con el inventario...");
+  try {
+    await loadProductsFromDatabase();
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) throw error;
+    if (data.session) {
+      state.isAdmin = await verifyAdminUser(data.session.user.id);
+      updateAdminUIState();
+    }
+  } catch (error) {
+    console.error("No se pudo inicializar la tienda:", error);
+    inventoryStatus = "error";
+    setDatabaseStatus("No se pudo conectar con el inventario. Recarga la página o revisa Supabase.");
+    renderProducts();
+  }
+}
+
+initializeStore();

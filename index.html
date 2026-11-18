@@ -53,7 +53,7 @@
     </div>
   </header>
 
-  <!-- SECCIÓN HERO OSCURA DE ALTO CONTRASTE -->
+  <!-- PRESENTACIÓN PRINCIPAL -->
   <section class="hero">
     <div class="hero-art" aria-hidden="true">
       <div class="ribbon ribbon-1"></div>
@@ -70,13 +70,8 @@
         <button class="pill" data-category="Carteras">Carteras</button>
       </div>
 
-      <h1 class="hero-title">
-        Distinción y artesanía<br />en cada paso que das
-      </h1>
-      <p class="hero-subtitle">
-        Colección exclusiva de calzado de vestir para hombre y mujer, sandalias tejidas
-        a mano y carteras de diseño atemporal.
-      </p>
+      <h1 class="hero-title">Diseño que te acompaña.</h1>
+      <p class="hero-subtitle">Calzado y accesorios de cuero para cada ocasión.</p>
 
       <div class="search-wrapper">
         <svg class="search-icon" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -93,51 +88,6 @@
         <button class="clear-search" id="clearSearchBtn" aria-label="Limpiar búsqueda" hidden>&times;</button>
       </div>
 
-      <div class="trending-row">
-        <span class="trending-label">Búsquedas destacadas</span>
-        <div class="trending-tags" id="trendingTags">
-          <button class="trend-tag" data-search="Oxford">oxford de gala</button>
-          <button class="trend-tag" data-search="Salón">taco salón</button>
-          <button class="trend-tag" data-search="Tejida">sandalias tejidas</button>
-          <button class="trend-tag" data-search="Cartera">carteras de cuero</button>
-          <button class="trend-tag" data-search="Mocasín">mocasín vestir</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- APARTADOS PRINCIPALES (HOMBRE, MUJER, SANDALIAS TEJIDAS, CARTERAS) -->
-  <section class="departments-section" aria-label="Apartados principales">
-    <div class="container">
-      <div class="departments-grid" id="departmentsGrid">
-        <button type="button" class="dept-card" data-dept-cat="Calzado Hombre">
-          <span class="dept-tag">Caballeros</span>
-          <h3>Calzado de Hombre</h3>
-          <p>Oxford, Derby y mocasines de vestir en cuero seleccionado.</p>
-          <span class="dept-link">Ver colección &rarr;</span>
-        </button>
-
-        <button type="button" class="dept-card" data-dept-cat="Calzado Mujer">
-          <span class="dept-tag">Damas</span>
-          <h3>Calzado de Mujer</h3>
-          <p>Zapatos de salón, tacones finos y diseños de etiqueta.</p>
-          <span class="dept-link">Ver colección &rarr;</span>
-        </button>
-
-        <button type="button" class="dept-card" data-dept-cat="Sandalias Tejidas">
-          <span class="dept-tag">Artesanía</span>
-          <h3>Sandalias Tejidas</h3>
-          <p>Tejido trenzado a mano con acabados finos y horma cómoda.</p>
-          <span class="dept-link">Ver colección &rarr;</span>
-        </button>
-
-        <button type="button" class="dept-card" data-dept-cat="Carteras">
-          <span class="dept-tag">Marroquinería</span>
-          <h3>Carteras</h3>
-          <p>Bolsos estructurados, bandoleras y carteras de mano.</p>
-          <span class="dept-link">Ver colección &rarr;</span>
-        </button>
-      </div>
     </div>
   </section>
 
@@ -150,6 +100,7 @@
           <p class="catalog-section-sub" id="activeSectionSub">
             Calzado de vestir para hombre y mujer, sandalias tejidas y carteras.
           </p>
+          <p class="database-status" id="databaseStatus" role="status" hidden></p>
         </div>
       </div>
 
@@ -253,6 +204,8 @@
       <div class="checkout-form">
         <label class="checkout-label" for="customerName">Nombre completo</label>
         <input type="text" id="customerName" class="checkout-input" placeholder="Ej. María Pérez" autocomplete="name" required />
+        <label class="checkout-label" for="customerPhone">WhatsApp (opcional)</label>
+        <input type="tel" id="customerPhone" class="checkout-input" placeholder="Ej. 999 123 456" autocomplete="tel" />
         <label class="checkout-label" for="customerAddress">Ciudad y dirección de entrega</label>
         <input type="text" id="customerAddress" class="checkout-input" placeholder="Ej. Lima, Miraflores..." autocomplete="street-address" required />
       </div>
@@ -279,12 +232,12 @@
         </svg>
       </div>
       <h3>Acceso Administrador</h3>
-      <p class="login-subtitle">Ingresa tus credenciales para gestionar el catálogo y reportes de ventas.</p>
+      <p class="login-subtitle">Ingresa con la cuenta de administrador de la tienda.</p>
 
       <form id="adminLoginForm" class="login-form">
         <div class="form-field">
-          <label for="adminUserInput">Correo o usuario</label>
-          <input type="text" id="adminUserInput" placeholder="admin@trazo.pe" required autocomplete="username" />
+          <label for="adminUserInput">Correo electrónico</label>
+          <input type="email" id="adminUserInput" placeholder="tu-correo@ejemplo.com" required autocomplete="username" />
         </div>
         <div class="form-field">
           <label for="adminPassInput">Contraseña</label>
@@ -294,10 +247,6 @@
         <button type="submit" class="btn-checkout-primary">Ingresar al Panel</button>
       </form>
 
-      <div class="demo-credentials-box">
-        <span>Acceso de prueba configurado:</span>
-        <code>admin@trazo.pe</code> &middot; <code>admin2026</code>
-      </div>
     </div>
   </div>
 
@@ -360,8 +309,8 @@
                 </div>
 
                 <div class="form-field">
-                  <label for="prodSizes">Tallas (ej. 36, 37, 38 o Única) *</label>
-                  <input type="text" id="prodSizes" value="39, 40, 41, 42" required />
+                  <label for="prodSizes">Talla y unidades disponibles (ej. 39:4, 40:2) *</label>
+                  <input type="text" id="prodSizes" placeholder="39:4, 40:2, 41:0" required />
                 </div>
               </div>
 
@@ -399,9 +348,6 @@
                 <h2 class="admin-card-title">Catálogo Activo (<span id="adminProductCount">0</span>)</h2>
                 <p class="admin-card-sub">Edita precios, tallas, apartados o elimina modelos publicados.</p>
               </div>
-              <button class="btn-outline-sm" id="restoreDefaultCatalogBtn" title="Restaurar los 10 artículos iniciales">
-                Restaurar catálogo base
-              </button>
             </div>
 
             <div class="admin-table-wrap">
@@ -410,7 +356,7 @@
                   <tr>
                     <th>Artículo</th>
                     <th>Apartado</th>
-                    <th>Tallas</th>
+                    <th>Talla (stock)</th>
                     <th>Precio</th>
                     <th>Acciones</th>
                   </tr>
@@ -460,6 +406,7 @@
                 <option value="Pendiente">Pendiente</option>
                 <option value="Enviado">Enviado</option>
                 <option value="Entregado">Entregado</option>
+                <option value="Cancelado">Cancelado</option>
               </select>
 
               <button class="btn-dark-pill" id="exportCsvBtn">
@@ -497,6 +444,13 @@
   <!-- NOTIFICACIÓN TOAST -->
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.SUPABASE_CONFIG = {
+      url: "https://YOUR_PROJECT_ID.supabase.co",
+      anonKey: "YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY"
+    };
+  </script>
   <script src="app.js"></script>
 </body>
 </html>
