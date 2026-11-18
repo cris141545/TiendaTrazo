@@ -779,23 +779,133 @@ document.querySelectorAll(".admin-tab").forEach((tab) => {
 // ==========================================================================
 const productAdminForm = document.getElementById("productAdminForm");
 const prodCategorySelect = document.getElementById("prodCategory");
-const prodSizesInput = document.getElementById("prodSizes");
+const prodSizeRows = document.getElementById("prodSizeRows");
+const prodNewSizeInput = document.getElementById("prodNewSize");
+const prodNewSizeStockInput = document.getElementById("prodNewSizeStock");
 const prodImageUrlInput = document.getElementById("prodImageUrl");
 const prodImageFileInput = document.getElementById("prodImageFile");
 const prodPreviewBox = document.getElementById("prodPreviewBox");
 const prodPreviewImg = document.getElementById("prodPreviewImg");
 
-// Sugerir tallas automáticamente según el apartado seleccionado en el Admin
+function getSuggestedStockEntries(category) {
+  const sizes =
+    category === "Carteras"
+      ? ["Única"]
+      : category === "Calzado Mujer" || category === "Sandalias Tejidas"
+        ? ["35", "36", "37", "38", "39"]
+        : ["39", "40", "41", "42", "43"];
+  return Object.fromEntries(sizes.map((size) => [size, 0]));
+}
+
+function renderSizeStockEditor(stockBySize) {
+  const entries = Object.entries(stockBySize);
+  prodSizeRows.innerHTML = entries.length
+    ? entries
+        .map(
+          ([size, stock]) => `
+            <div class="size-stock-row">
+              <span class="size-stock-name">Talla ${escapeHtml(size)}</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value="${Number(stock)}"
+                data-size-stock="${escapeHtml(size)}"
+                aria-label="Unidades disponibles para talla ${escapeHtml(size)}"
+              />
+              <button
+                type="button"
+                class="btn-remove-size"
+                data-remove-size="${escapeHtml(size)}"
+                aria-label="Quitar talla ${escapeHtml(size)}"
+              >×</button>
+            </div>
+          `
+        )
+        .join("")
+    : '<p class="size-stock-hint">Agrega al menos una talla.</p>';
+}
+
+function readSizeStockEditor() {
+  const inputs = prodSizeRows.querySelectorAll("[data-size-stock]");
+  if (inputs.length === 0) throw new Error("Agrega al menos una talla y su stock.");
+
+  const stockBySize = Object.create(null);
+  inputs.forEach((input) => {
+    const size = input.dataset.sizeStock.trim();
+    const value = input.value.trim();
+    const stock = Number(value);
+    if (
+      !size ||
+      !value ||
+      !Number.isSafeInteger(stock) ||
+      stock < 0 ||
+      Object.prototype.hasOwnProperty.call(stockBySize, size)
+    ) {
+      throw new Error("Revisa las tallas y asegúrate de ingresar cantidades enteras de cero o más.");
+    }
+    stockBySize[size] = stock;
+  });
+  return stockBySize;
+}
+
+document.getElementById("addProductSizeBtn").addEventListener("click", () => {
+  const size = prodNewSizeInput.value.trim();
+  const stockValue = prodNewSizeStockInput.value.trim();
+  const stock = Number(stockValue);
+  if (!size) {
+    showToast("Escribe la talla que deseas agregar.");
+    prodNewSizeInput.focus();
+    return;
+  }
+  if (!stockValue || !Number.isSafeInteger(stock) || stock < 0) {
+    showToast("Ingresa una cantidad entera de cero o más.");
+    prodNewSizeStockInput.focus();
+    return;
+  }
+
+  let stockBySize;
+  try {
+    stockBySize = readSizeStockEditor();
+  } catch (error) {
+    showToast(error.message);
+    return;
+  }
+  if (Object.prototype.hasOwnProperty.call(stockBySize, size)) {
+    showToast(`La talla ${size} ya está agregada.`);
+    prodNewSizeInput.focus();
+    return;
+  }
+
+  stockBySize[size] = stock;
+  renderSizeStockEditor(stockBySize);
+  prodNewSizeInput.value = "";
+  prodNewSizeStockInput.value = "0";
+  prodNewSizeInput.focus();
+});
+
+prodSizeRows.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-size]");
+  if (!button) return;
+
+  let stockBySize;
+  try {
+    stockBySize = readSizeStockEditor();
+  } catch (error) {
+    showToast(error.message);
+    return;
+  }
+  if (Object.keys(stockBySize).length === 1) {
+    showToast("El producto debe conservar al menos una talla.");
+    return;
+  }
+  delete stockBySize[button.dataset.removeSize];
+  renderSizeStockEditor(stockBySize);
+});
+
 prodCategorySelect.addEventListener("change", () => {
   if (document.getElementById("editProductId").value) return;
-  const cat = prodCategorySelect.value;
-  if (cat === "Carteras") {
-    prodSizesInput.value = "Única:0";
-  } else if (cat === "Calzado Mujer" || cat === "Sandalias Tejidas") {
-    prodSizesInput.value = "35:0, 36:0, 37:0, 38:0, 39:0";
-  } else {
-    prodSizesInput.value = "39:0, 40:0, 41:0, 42:0, 43:0";
-  }
+  renderSizeStockEditor(getSuggestedStockEntries(prodCategorySelect.value));
 });
 
 prodImageFileInput.addEventListener("change", (e) => {
@@ -842,30 +952,12 @@ function resetProductForm() {
   document.getElementById("saveProductBtn").textContent = "Publicar Artículo";
   document.getElementById("cancelEditBtn").hidden = true;
   document.getElementById("fileUploadStatus").textContent = "JPG, PNG o WebP";
-  prodSizesInput.value = "39:0, 40:0, 41:0, 42:0";
+  renderSizeStockEditor(getSuggestedStockEntries(prodCategorySelect.value));
   prodPreviewBox.hidden = true;
 }
 
+renderSizeStockEditor(getSuggestedStockEntries(prodCategorySelect.value));
 document.getElementById("cancelEditBtn").addEventListener("click", resetProductForm);
-
-function parseStockEntries(input) {
-  const entries = input.split(",").map((entry) => entry.trim()).filter(Boolean);
-  if (entries.length === 0) throw new Error("Agrega al menos una talla y su stock.");
-
-  const stockBySize = {};
-  entries.forEach((entry) => {
-    const match = entry.match(/^([^:]+):\s*(\d+)$/);
-    if (!match) throw new Error(`Formato inválido: "${entry}". Usa talla:unidades.`);
-    const size = match[1].trim();
-    const stock = Number(match[2]);
-    if (!size || !Number.isSafeInteger(stock) || Object.prototype.hasOwnProperty.call(stockBySize, size)) {
-      throw new Error(`Revisa la talla o las unidades de "${entry}".`);
-    }
-    stockBySize[size] = stock;
-  });
-
-  return stockBySize;
-}
 
 function formatStockEntries(product) {
   return product.sizes
@@ -901,10 +993,11 @@ productAdminForm.addEventListener("submit", async (e) => {
 
   let stockBySize;
   try {
-    stockBySize = parseStockEntries(prodSizesInput.value);
+    stockBySize = readSizeStockEditor();
   } catch (error) {
     showToast(error.message);
-    prodSizesInput.focus();
+    const firstSizeInput = prodSizeRows.querySelector("[data-size-stock]");
+    if (firstSizeInput) firstSizeInput.focus();
     return;
   }
 
@@ -995,7 +1088,7 @@ document.getElementById("adminProductsTableBody").addEventListener("click", asyn
     prodCategorySelect.value = prod.category;
     document.getElementById("prodPrice").value = prod.price;
     document.getElementById("prodBadge").value = prod.badge || "";
-    prodSizesInput.value = formatStockEntries(prod);
+    renderSizeStockEditor(prod.stockBySize);
     document.getElementById("prodTags").value = prod.tags || "";
     prodImageUrlInput.value = prod.image;
     prodPreviewImg.src = prod.image;

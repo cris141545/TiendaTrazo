@@ -17,7 +17,7 @@ La tienda está publicada como sitio estático en GitHub Pages. Supabase guarda 
 
 5. En **Project Settings → API**, copia la URL del proyecto y la clave **publishable** (o `anon`).
 6. Reemplaza los dos valores de `window.SUPABASE_CONFIG` al final de `index.html` por la URL y la clave. Esta clave es pública por diseño: las políticas RLS restringen el acceso. **Nunca uses `service_role` en la tienda ni la publiques en GitHub.**
-7. Publica el cambio en GitHub Pages y abre **Admin**. Inicia sesión con la cuenta creada y, al editar cada producto, registra sus tallas y unidades con el formato `39:4, 40:2, 41:0`. Para carteras puedes usar `Única:3`.
+7. Publica el cambio en GitHub Pages y abre **Admin**. Inicia sesión con la cuenta creada y registra las unidades en cada talla. Para una talla nueva, como `46`, escribe la talla y sus unidades y pulsa **Agregar talla**; al guardar el producto, esa talla aparecerá como opción en la tienda. Para carteras se puede usar `Única`.
 
 ## Inventario y pedidos
 

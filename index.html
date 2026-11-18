@@ -302,16 +302,26 @@
                 </div>
               </div>
 
-              <div class="form-row-2">
-                <div class="form-field">
-                  <label for="prodBadge">Etiqueta opcional</label>
-                  <input type="text" id="prodBadge" placeholder="Ej. Cuero Genuino, Tejido a Mano" />
-                </div>
+              <div class="form-field">
+                <label for="prodBadge">Etiqueta opcional</label>
+                <input type="text" id="prodBadge" placeholder="Ej. Cuero Genuino, Tejido a Mano" />
+              </div>
 
-                <div class="form-field">
-                  <label for="prodSizes">Talla y unidades disponibles (ej. 39:4, 40:2) *</label>
-                  <input type="text" id="prodSizes" placeholder="39:4, 40:2, 41:0" required />
+              <div class="form-field">
+                <span class="form-field-label">Stock disponible por talla *</span>
+                <div id="prodSizeRows" class="size-stock-list" aria-label="Stock disponible por talla"></div>
+                <div class="size-stock-add">
+                  <div class="form-field">
+                    <label for="prodNewSize">Nueva talla</label>
+                    <input type="text" id="prodNewSize" placeholder="Ej. 46 o Única" />
+                  </div>
+                  <div class="form-field">
+                    <label for="prodNewSizeStock">Unidades</label>
+                    <input type="number" id="prodNewSizeStock" min="0" step="1" value="0" />
+                  </div>
+                  <button type="button" class="btn-add-size" id="addProductSizeBtn">Agregar talla</button>
                 </div>
+                <p class="size-stock-hint">Agrega cualquier talla; al guardar el producto aparecerá como opción en la tienda.</p>
               </div>
 
               <div class="form-field">
