@@ -502,14 +502,14 @@ function renderCart() {
   cartSubtotal.textContent = `S/ ${subtotal.toFixed(2)}`;
 }
 
-function recordOrder(channel) {
+function recordOrder(channel, orderId) {
   const name = document.getElementById("customerName").value.trim() || "Cliente Web";
   const address = document.getElementById("customerAddress").value.trim() || "Por coordinar";
   const total = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const totalPairs = state.cart.reduce((sum, item) => sum + item.qty, 0);
 
   const newOrder = {
-    id: "TRZ-" + Math.floor(100000 + Math.random() * 900000),
+    id: orderId,
     date: new Date().toISOString(),
     customer: name,
     address: address,
@@ -1130,50 +1130,51 @@ document.getElementById("whatsappCheckoutBtn").addEventListener("click", () => {
     return;
   }
 
-  const order = recordOrder("WhatsApp");
-  const lines = order.items.map(
-    (item) =>
-      `• ${item.qty}x ${item.name} (${
-        item.size === "Única" ? "Talla Única" : "Talla " + item.size
-      }) - S/ ${(item.price * item.qty).toFixed(2)}`
-  );
-
-  const message =
-    `Hola trazo., quiero confirmar mi pedido *#${order.id}*:%0A%0A` +
-    `${lines.join("%0A")}%0A%0A` +
-    `*Total:* S/ ${order.total.toFixed(2)}%0A` +
-    `*Cliente:* ${encodeURIComponent(order.customer)}%0A` +
-    `*Entrega:* ${encodeURIComponent(order.address)}`;
-
-  state.cart = [];
-  saveUserLists();
-  updateBadges();
-  renderCart();
-  closeCart();
-
-  window.open(`https://wa.me/${STORE_WHATSAPP}?text=${message}`, "_blank");
-});
-
-document.getElementById("simulateOrderBtn").addEventListener("click", () => {
-  if (state.cart.length === 0) {
-    showToast("Tu carrito está vacío");
+  const customerName = document.getElementById("customerName");
+  const customerAddress = document.getElementById("customerAddress");
+  if (!customerName.value.trim() || !customerAddress.value.trim()) {
+    showToast("Completa tu nombre y dirección para continuar");
+    (customerName.value.trim() ? customerAddress : customerName).focus();
     return;
   }
 
-  const order = recordOrder("Web Directa");
-  document.getElementById("orderModalText").textContent =
-    `Tu orden #${order.id} por S/ ${order.total.toFixed(2)} ha sido registrada correctamente.`;
+  const lines = state.cart.map(
+    (item) =>
+      `- ${item.name}\n  Talla: ${item.size === "Única" ? "Única" : item.size}\n  Cantidad: ${item.qty}\n  Precio unitario: S/ ${item.price.toFixed(2)}\n  Importe: S/ ${(item.price * item.qty).toFixed(2)}`
+  );
+  const total = state.cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const totalItems = state.cart.reduce((sum, item) => sum + item.qty, 0);
+  const orderId = "TRZ-" + Math.floor(100000 + Math.random() * 900000);
+  const message = [
+    "Hola, quiero realizar este pedido en trazo.",
+    `Pedido: ${orderId}`,
+    "",
+    "PRODUCTOS:",
+    ...lines,
+    "",
+    `Total (${totalItems} ${totalItems === 1 ? "artículo" : "artículos"}): S/ ${total.toFixed(2)}`,
+    "",
+    "DATOS PARA LA ENTREGA:",
+    `Nombre: ${customerName.value.trim()}`,
+    `Dirección: ${customerAddress.value.trim()}`,
+    "",
+    "Por favor, confirmen disponibilidad y costo de envío."
+  ].join("\n");
+  const whatsappUrl = `https://wa.me/${STORE_WHATSAPP}?text=${encodeURIComponent(message)}`;
+  const whatsappWindow = window.open(whatsappUrl, "_blank");
+  if (!whatsappWindow) {
+    showToast("No se pudo abrir WhatsApp. Permite las ventanas emergentes e inténtalo de nuevo.");
+    return;
+  }
+  whatsappWindow.opener = null;
 
+  recordOrder("WhatsApp", orderId);
   state.cart = [];
   saveUserLists();
   updateBadges();
   renderCart();
   closeCart();
-  document.getElementById("orderModal").hidden = false;
-});
-
-document.getElementById("closeOrderModalBtn").addEventListener("click", () => {
-  document.getElementById("orderModal").hidden = true;
+  showToast("Pedido preparado. Confirma el envío desde WhatsApp.");
 });
 
 // Inicializar aplicación
