@@ -181,11 +181,14 @@ if (supabaseReady) {
   }
 }
 let inventoryStatus = supabaseClient ? "loading" : "unconfigured";
+let colorInventoryReady = false;
 
 const state = {
   products: DEFAULT_PRODUCTS.map((product) => ({
     ...product,
-    stockBySize: Object.fromEntries(product.sizes.map((size) => [String(size), 0]))
+    stockByColor: {
+      "": Object.fromEntries(product.sizes.map((size) => [String(size), 0]))
+    }
   })),
   orders: [],
   isAdmin: false,
@@ -196,17 +199,41 @@ const state = {
   maxPrice: 800,
   onlyWishlist: false,
   selectedSizes: {},
+  selectedColors: {},
   wishlist: JSON.parse(localStorage.getItem("trazo_wishlist_v2") || "[]"),
   cart: JSON.parse(localStorage.getItem("trazo_cart_v2") || "[]")
 };
 
+function productUsesColors(product) {
+  return colorInventoryReady && product.category !== "Carteras";
+}
+
+function isMissingColorColumn(error) {
+  const message = String(error && error.message || "").toLowerCase();
+  return (
+    (error && (error.code === "42703" || error.code === "PGRST204")) &&
+    message.includes("color")
+  );
+}
+
 function syncSelectedSizes() {
   state.products.forEach((p) => {
-    const normalizedSizes = p.sizes.map(String);
-    p.sizes = normalizedSizes;
-    p.stockBySize = p.stockBySize || Object.fromEntries(normalizedSizes.map((size) => [size, 0]));
-    if (!state.selectedSizes[p.id] || !normalizedSizes.includes(String(state.selectedSizes[p.id]))) {
-      state.selectedSizes[p.id] = normalizedSizes[Math.floor(normalizedSizes.length / 2)] || normalizedSizes[0];
+    if (!p.stockByColor) {
+      p.stockByColor = {
+        "": Object.fromEntries((p.sizes || []).map((size) => [String(size), 0]))
+      };
+    }
+    const colors = Object.keys(p.stockByColor);
+    p.sizes = [...new Set(colors.flatMap((color) => Object.keys(p.stockByColor[color]).map(String)))];
+
+    const selectableColors = productUsesColors(p) ? colors.filter(Boolean) : [""];
+    if (!selectableColors.includes(state.selectedColors[p.id])) {
+      state.selectedColors[p.id] = selectableColors[0] || "";
+    }
+    const currentSizes = Object.keys(p.stockByColor[state.selectedColors[p.id]] || {});
+    if (!currentSizes.includes(String(state.selectedSizes[p.id]))) {
+      state.selectedSizes[p.id] =
+        currentSizes[Math.floor(currentSizes.length / 2)] || currentSizes[0] || "";
     }
   });
 }
@@ -264,17 +291,44 @@ function setDatabaseStatus(message) {
 }
 
 async function loadProductsFromDatabase() {
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from("products")
-    .select("id, name, category, price, badge, badge_accent, is_new, popularity, tags, image, product_sizes(size, stock)")
+    .select("id, name, category, price, badge, badge_accent, is_new, popularity, tags, image, product_sizes(color, size, stock)")
     .order("id");
+  if (error && isMissingColorColumn(error)) {
+    const legacyResult = await supabaseClient
+      .from("products")
+      .select("id, name, category, price, badge, badge_accent, is_new, popularity, tags, image, product_sizes(size, stock)")
+      .order("id");
+    if (legacyResult.error) {
+      inventoryStatus = "error";
+      throw legacyResult.error;
+    }
+    data = legacyResult.data.map((product) => ({
+      ...product,
+      product_sizes: product.product_sizes.map((variant) => ({ ...variant, color: "" }))
+    }));
+    error = null;
+    colorInventoryReady = false;
+  } else if (!error) {
+    colorInventoryReady = true;
+  }
   if (error) {
     inventoryStatus = "error";
     throw error;
   }
+  if (!data) {
+    inventoryStatus = "error";
+    throw new Error("La base de datos no devolvió el catálogo.");
+  }
 
   state.products = data.map((product) => {
-    const sizes = product.product_sizes.map((variant) => String(variant.size));
+    const stockByColor = Object.create(null);
+    product.product_sizes.forEach((variant) => {
+      const color = String(variant.color || "");
+      if (!stockByColor[color]) stockByColor[color] = {};
+      stockByColor[color][String(variant.size)] = Number(variant.stock);
+    });
     return {
       id: Number(product.id),
       name: product.name,
@@ -286,10 +340,8 @@ async function loadProductsFromDatabase() {
       popularity: product.popularity,
       tags: product.tags,
       image: product.image,
-      sizes,
-      stockBySize: Object.fromEntries(
-        product.product_sizes.map((variant) => [String(variant.size), Number(variant.stock)])
-      )
+      sizes: [...new Set(product.product_sizes.map((variant) => String(variant.size)))],
+      stockByColor
     };
   });
   syncSelectedSizes();
@@ -297,10 +349,16 @@ async function loadProductsFromDatabase() {
   state.cart.forEach((item) => {
     const product = state.products.find((entry) => entry.id === item.id);
     if (!product) return;
-    if (item.name !== product.name || item.price !== product.price || item.image !== product.image) {
+    if (
+      item.name !== product.name ||
+      item.price !== product.price ||
+      item.image !== product.image ||
+      item.category !== product.category
+    ) {
       item.name = product.name;
       item.price = product.price;
       item.image = product.image;
+      item.category = product.category;
       cartChanged = true;
     }
   });
@@ -310,7 +368,11 @@ async function loadProductsFromDatabase() {
   }
   inventoryStatus = "ready";
   renderProducts();
-  setDatabaseStatus("");
+  setDatabaseStatus(
+    colorInventoryReady
+      ? ""
+      : "Ejecuta la migración 002 para activar la selección de color."
+  );
 }
 
 // ==========================================================================
@@ -369,9 +431,12 @@ function getFilteredProducts() {
     });
 }
 
-function getCartQuantity(productId, size) {
+function getCartQuantity(productId, color, size) {
   const item = state.cart.find(
-    (cartItem) => cartItem.id === productId && String(cartItem.size) === String(size)
+    (cartItem) =>
+      cartItem.id === productId &&
+      String(cartItem.color || "") === String(color || "") &&
+      String(cartItem.size) === String(size)
   );
   return item ? item.qty : 0;
 }
@@ -393,16 +458,48 @@ function renderProducts() {
   productsGrid.innerHTML = filtered
     .map((product) => {
       const isFav = state.wishlist.includes(product.id);
+      const hasColorSelection = productUsesColors(product);
+      const colors = Object.keys(product.stockByColor).filter(Boolean);
+      const activeColor = hasColorSelection ? String(state.selectedColors[product.id] || "") : "";
+      const stockBySize = product.stockByColor[activeColor] || {};
       const activeSize = String(state.selectedSizes[product.id]);
-      const selectedStock = Number(product.stockBySize[activeSize] || 0);
-      const selectedAvailableStock = selectedStock - getCartQuantity(product.id, activeSize);
+      const selectedStock = Number(stockBySize[activeSize] || 0);
+      const selectedAvailableStock =
+        selectedStock - getCartQuantity(product.id, activeColor, activeSize);
       const canAddSelectedSize =
-        inventoryStatus === "ready" && selectedAvailableStock > 0;
+        inventoryStatus === "ready" &&
+        (!hasColorSelection || Boolean(activeColor)) &&
+        selectedAvailableStock > 0;
 
-      const sizesHTML = product.sizes
+      const colorsHTML = hasColorSelection
+        ? colors.length
+          ? `
+            <div class="card-colors" aria-label="Seleccionar color">
+              ${colors
+                .map(
+                  (color) => `
+                    <button
+                      type="button"
+                      class="color-option ${color === activeColor ? "selected" : ""}"
+                      data-action="select-color"
+                      data-id="${product.id}"
+                      data-color="${escapeHtml(color)}"
+                      aria-pressed="${color === activeColor}"
+                    >${escapeHtml(color)}</button>
+                  `
+                )
+                .join("")}
+            </div>
+          `
+          : '<p class="color-pending">Colores pendientes de configurar</p>'
+        : "";
+
+      const sizesHTML = Object.keys(stockBySize)
         .map((size) => {
-          const stock = Number(product.stockBySize[String(size)] || 0);
-          const available = inventoryStatus === "ready" && stock > getCartQuantity(product.id, size);
+          const stock = Number(stockBySize[String(size)] || 0);
+          const available =
+            inventoryStatus === "ready" &&
+            stock > getCartQuantity(product.id, activeColor, size);
           return `
           <button
             type="button"
@@ -451,12 +548,13 @@ function renderProducts() {
             <span class="card-price">S/ ${Number(product.price).toFixed(2)}</span>
           </div>
           <p class="card-category">${escapeHtml(product.category)}</p>
+          ${colorsHTML}
           <p class="card-stock ${selectedAvailableStock > 0 ? "" : "out-of-stock"}">
-            ${inventoryStatus === "unconfigured" ? "Stock pendiente de configurar" : inventoryStatus === "loading" ? "Cargando stock..." : inventoryStatus === "error" ? "Stock no disponible" : selectedAvailableStock > 0 ? "Disponible" : "Agotado"}
+            ${inventoryStatus === "unconfigured" ? "Stock pendiente de configurar" : inventoryStatus === "loading" ? "Cargando stock..." : inventoryStatus === "error" ? "Stock no disponible" : hasColorSelection && !activeColor ? "Asigna colores en el panel" : selectedAvailableStock > 0 ? "Disponible" : "Agotado"}
           </p>
 
           <div class="card-sizes" aria-label="Seleccionar talla o medida">
-            ${sizesHTML}
+            ${sizesHTML || (hasColorSelection && !activeColor ? '<span class="size-pending">Selecciona un color para ver tallas</span>' : "")}
           </div>
 
           <button
@@ -466,7 +564,7 @@ function renderProducts() {
             data-id="${product.id}"
             ${canAddSelectedSize ? "" : "disabled"}
           >
-            ${canAddSelectedSize ? "Agregar al carrito" : inventoryStatus === "ready" ? "Agotado" : "No disponible"}
+            ${canAddSelectedSize ? "Agregar al carrito" : inventoryStatus === "ready" && hasColorSelection && !activeColor ? "Color pendiente" : inventoryStatus === "ready" ? "Agotado" : "No disponible"}
           </button>
         </article>
       `;
@@ -485,17 +583,25 @@ function updateBadges() {
 
 function addToCart(productId) {
   const product = state.products.find((p) => p.id === productId);
+  const color = product && productUsesColors(product) ? String(state.selectedColors[productId] || "") : "";
   const size = String(state.selectedSizes[productId]);
   if (!product) return;
 
-  const stock = Number(product.stockBySize[size] || 0);
-  if (inventoryStatus !== "ready" || getCartQuantity(productId, size) >= stock) {
+  if (productUsesColors(product) && !color) {
+    showToast("Este artículo aún no tiene colores asignados.");
+    return;
+  }
+  const stock = Number((product.stockByColor[color] || {})[size] || 0);
+  if (inventoryStatus !== "ready" || getCartQuantity(productId, color, size) >= stock) {
     showToast(stock === 0 ? "Esta talla está agotada" : "No hay más unidades disponibles de esta talla");
     return;
   }
 
   const existing = state.cart.find(
-    (item) => item.id === productId && String(item.size) === size
+    (item) =>
+      item.id === productId &&
+      String(item.color || "") === color &&
+      String(item.size) === size
   );
 
   if (existing) {
@@ -506,6 +612,8 @@ function addToCart(productId) {
       name: product.name,
       price: Number(product.price),
       image: product.image,
+      category: product.category,
+      color,
       size,
       qty: 1
     });
@@ -516,7 +624,8 @@ function addToCart(productId) {
   renderCart();
   renderProducts();
   const sizeText = size === "Única" ? "Talla Única" : `Talla ${size}`;
-  showToast(`Agregado: ${product.name} (${sizeText})`);
+  const colorText = color ? `, ${color}` : "";
+  showToast(`Agregado: ${product.name} (${sizeText}${colorText})`);
 }
 
 function changeCartQty(index, delta) {
@@ -524,10 +633,11 @@ function changeCartQty(index, delta) {
   if (!item) return;
   if (delta > 0) {
     const product = state.products.find((entry) => entry.id === item.id);
+    const color = String(item.color || "");
     if (
       inventoryStatus !== "ready" ||
       !product ||
-      item.qty >= Number(product.stockBySize[String(item.size)] || 0)
+      item.qty >= Number((product.stockByColor[color] || {})[String(item.size)] || 0)
     ) {
       showToast("No hay más unidades disponibles de esta talla");
       return;
@@ -559,13 +669,18 @@ function renderCart() {
   cartItemsContainer.innerHTML = state.cart
     .map((item, idx) => {
       subtotal += item.price * item.qty;
+      const product = state.products.find((entry) => entry.id === item.id);
+      const category = product ? product.category : item.category;
       const sizeLabel = item.size === "Única" ? "Talla Única" : `Talla ${item.size}`;
+      const variantLabels = [];
+      if (category !== "Carteras" && item.color) variantLabels.push(`Color: ${item.color}`);
+      if (sizeLabel) variantLabels.push(sizeLabel);
       return `
         <div class="cart-item">
           <img src="${escapeHtml(item.image)}" alt="${escapeHtml(item.name)}" />
           <div>
             <div class="cart-item-title">${escapeHtml(item.name)}</div>
-            <div class="cart-item-meta">${escapeHtml(sizeLabel)} &middot; S/ ${item.price.toFixed(2)}</div>
+            <div class="cart-item-meta">${escapeHtml(variantLabels.join(" · "))} &middot; S/ ${item.price.toFixed(2)}</div>
             <div class="qty-controls">
               <button class="qty-btn" data-cart-idx="${idx}" data-delta="-1">-</button>
               <span>${item.qty}</span>
@@ -626,10 +741,22 @@ async function verifyAdminUser(userId) {
 }
 
 async function loadOrdersFromDatabase() {
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from("orders")
-    .select("order_code, created_at, status, total, total_items, channel, delivery_address, customers(full_name, phone), order_items(product_name, size, quantity, unit_price, subtotal)")
+    .select("order_code, created_at, status, total, total_items, channel, delivery_address, customers(full_name, phone), order_items(product_name, color, size, quantity, unit_price, subtotal)")
     .order("created_at", { ascending: false });
+  if (error && isMissingColorColumn(error)) {
+    const legacyResult = await supabaseClient
+      .from("orders")
+      .select("order_code, created_at, status, total, total_items, channel, delivery_address, customers(full_name, phone), order_items(product_name, size, quantity, unit_price, subtotal)")
+      .order("created_at", { ascending: false });
+    if (legacyResult.error) throw legacyResult.error;
+    data = legacyResult.data.map((order) => ({
+      ...order,
+      order_items: order.order_items.map((item) => ({ ...item, color: "" }))
+    }));
+    error = null;
+  }
   if (error) throw error;
 
   state.orders = data.map((order) => {
@@ -648,6 +775,7 @@ async function loadOrdersFromDatabase() {
       total: Number(order.total),
       items: order.order_items.map((item) => ({
         name: item.product_name,
+        color: item.color || "",
         size: item.size,
         qty: item.quantity,
         price: Number(item.unit_price),
@@ -675,6 +803,7 @@ async function openAdminPanel() {
   if (!state.isAdmin) return;
   try {
     await Promise.all([loadProductsFromDatabase(), loadOrdersFromDatabase()]);
+    renderColorStockEditor(editorStockByColor, selectedEditorColor);
     renderAdminProductsTable();
     renderSalesReports();
     adminPanelModal.hidden = false;
@@ -779,6 +908,9 @@ document.querySelectorAll(".admin-tab").forEach((tab) => {
 // ==========================================================================
 const productAdminForm = document.getElementById("productAdminForm");
 const prodCategorySelect = document.getElementById("prodCategory");
+const prodColorField = document.getElementById("prodColorField");
+const prodColorSelect = document.getElementById("prodColorSelect");
+const prodNewColorInput = document.getElementById("prodNewColor");
 const prodSizeRows = document.getElementById("prodSizeRows");
 const prodNewSizeInput = document.getElementById("prodNewSize");
 const prodNewSizeStockInput = document.getElementById("prodNewSizeStock");
@@ -786,6 +918,8 @@ const prodImageUrlInput = document.getElementById("prodImageUrl");
 const prodImageFileInput = document.getElementById("prodImageFile");
 const prodPreviewBox = document.getElementById("prodPreviewBox");
 const prodPreviewImg = document.getElementById("prodPreviewImg");
+let editorStockByColor = {};
+let selectedEditorColor = "";
 
 function getSuggestedStockEntries(category) {
   const sizes =
@@ -795,6 +929,10 @@ function getSuggestedStockEntries(category) {
         ? ["35", "36", "37", "38", "39"]
         : ["39", "40", "41", "42", "43"];
   return Object.fromEntries(sizes.map((size) => [size, 0]));
+}
+
+function getSuggestedColorStock(category) {
+  return { "": getSuggestedStockEntries(category) };
 }
 
 function renderSizeStockEditor(stockBySize) {
@@ -837,17 +975,158 @@ function readSizeStockEditor() {
     const stock = Number(value);
     if (
       !size ||
+      size.length > 20 ||
       !value ||
       !Number.isSafeInteger(stock) ||
       stock < 0 ||
+      stock > 2147483647 ||
       Object.prototype.hasOwnProperty.call(stockBySize, size)
     ) {
-      throw new Error("Revisa las tallas y asegúrate de ingresar cantidades enteras de cero o más.");
+      throw new Error("Revisa las tallas y usa cantidades enteras entre 0 y 2,147,483,647.");
     }
     stockBySize[size] = stock;
   });
   return stockBySize;
 }
+
+function saveCurrentColorStock() {
+  editorStockByColor[selectedEditorColor] = readSizeStockEditor();
+}
+
+function renderColorStockEditor(stockByColor, selectedColor) {
+  editorStockByColor = Object.fromEntries(
+    Object.entries(stockByColor).map(([color, stockBySize]) => [
+      String(color),
+      { ...stockBySize }
+    ])
+  );
+  if (Object.keys(editorStockByColor).length === 0) {
+    editorStockByColor = getSuggestedColorStock(prodCategorySelect.value);
+  }
+
+  const colors = Object.keys(editorStockByColor);
+  const supportsColors =
+    (colorInventoryReady && prodCategorySelect.value !== "Carteras") || colors.some(Boolean);
+  prodColorField.hidden = !supportsColors;
+  selectedEditorColor = colors.includes(String(selectedColor)) ? String(selectedColor) : colors[0];
+  prodColorSelect.innerHTML = colors
+    .map(
+      (color) => `<option value="${escapeHtml(color)}">${escapeHtml(color || "Sin color asignado")}</option>`
+    )
+    .join("");
+  prodColorSelect.value = selectedEditorColor;
+  document.getElementById("stockEditorTitle").textContent =
+    `Stock disponible por talla${selectedEditorColor ? ` — ${selectedEditorColor}` : ""} *`;
+  renderSizeStockEditor(editorStockByColor[selectedEditorColor] || {});
+}
+
+function readColorStockEditor() {
+  saveCurrentColorStock();
+  const colors = Object.keys(editorStockByColor);
+  if (
+    colorInventoryReady &&
+    prodCategorySelect.value === "Carteras" &&
+    colors.some((color) => color.trim())
+  ) {
+    throw new Error("Quita los colores antes de cambiar el producto a Carteras.");
+  }
+  if (
+    colorInventoryReady &&
+    prodCategorySelect.value !== "Carteras" &&
+    !colors.some((color) => color.trim())
+  ) {
+    throw new Error("Agrega al menos un color para el calzado o las sandalias.");
+  }
+  return colors.flatMap((color) =>
+    Object.entries(editorStockByColor[color]).map(([size, stock]) => ({
+      color,
+      size,
+      stock
+    }))
+  );
+}
+
+prodColorSelect.addEventListener("change", () => {
+  try {
+    saveCurrentColorStock();
+  } catch (error) {
+    showToast(error.message);
+    prodColorSelect.value = selectedEditorColor;
+    return;
+  }
+  selectedEditorColor = prodColorSelect.value;
+  document.getElementById("stockEditorTitle").textContent =
+    `Stock disponible por talla${selectedEditorColor ? ` — ${selectedEditorColor}` : ""} *`;
+  renderSizeStockEditor(editorStockByColor[selectedEditorColor] || {});
+});
+
+document.getElementById("addProductColorBtn").addEventListener("click", () => {
+  if (!colorInventoryReady) {
+    showToast("Ejecuta la migración 002 para activar el inventario por color.");
+    return;
+  }
+  if (prodCategorySelect.value === "Carteras") {
+    showToast("Las carteras no usan variantes de color.");
+    return;
+  }
+  const color = prodNewColorInput.value.trim();
+  if (!color) {
+    showToast("Escribe el color que deseas agregar.");
+    prodNewColorInput.focus();
+    return;
+  }
+
+  try {
+    saveCurrentColorStock();
+  } catch (error) {
+    showToast(error.message);
+    return;
+  }
+  if (color.length > 60) {
+    showToast("El nombre del color no puede superar 60 caracteres.");
+    return;
+  }
+  if (Object.keys(editorStockByColor).some((entry) => entry.toLowerCase() === color.toLowerCase())) {
+    showToast(`El color ${color} ya está agregado.`);
+    prodNewColorInput.focus();
+    return;
+  }
+
+  const currentSizes = Object.keys(editorStockByColor[selectedEditorColor] || {});
+  const suggestedSizes = Object.keys(getSuggestedStockEntries(prodCategorySelect.value));
+  editorStockByColor[color] = Object.fromEntries(
+    (currentSizes.length ? currentSizes : suggestedSizes).map((size) => [size, 0])
+  );
+  selectedEditorColor = color;
+  prodNewColorInput.value = "";
+  renderColorStockEditor(editorStockByColor, selectedEditorColor);
+  prodNewSizeInput.focus();
+});
+
+document.getElementById("removeProductColorBtn").addEventListener("click", () => {
+  if (!selectedEditorColor) {
+    showToast("El stock sin color asignado no se puede quitar; pon sus unidades en cero.");
+    return;
+  }
+
+  try {
+    saveCurrentColorStock();
+  } catch (error) {
+    showToast(error.message);
+    return;
+  }
+  if (Object.values(editorStockByColor[selectedEditorColor]).some((stock) => stock > 0)) {
+    showToast("Pon en cero las unidades de este color antes de quitarlo.");
+    return;
+  }
+
+  delete editorStockByColor[selectedEditorColor];
+  if (Object.keys(editorStockByColor).length === 0) {
+    editorStockByColor = getSuggestedColorStock(prodCategorySelect.value);
+  }
+  selectedEditorColor = Object.keys(editorStockByColor)[0];
+  renderColorStockEditor(editorStockByColor, selectedEditorColor);
+});
 
 document.getElementById("addProductSizeBtn").addEventListener("click", () => {
   const size = prodNewSizeInput.value.trim();
@@ -858,8 +1137,8 @@ document.getElementById("addProductSizeBtn").addEventListener("click", () => {
     prodNewSizeInput.focus();
     return;
   }
-  if (!stockValue || !Number.isSafeInteger(stock) || stock < 0) {
-    showToast("Ingresa una cantidad entera de cero o más.");
+  if (!stockValue || !Number.isSafeInteger(stock) || stock < 0 || stock > 2147483647) {
+    showToast("Ingresa una cantidad entera entre 0 y 2,147,483,647.");
     prodNewSizeStockInput.focus();
     return;
   }
@@ -878,6 +1157,7 @@ document.getElementById("addProductSizeBtn").addEventListener("click", () => {
   }
 
   stockBySize[size] = stock;
+  editorStockByColor[selectedEditorColor] = stockBySize;
   renderSizeStockEditor(stockBySize);
   prodNewSizeInput.value = "";
   prodNewSizeStockInput.value = "0";
@@ -900,12 +1180,22 @@ prodSizeRows.addEventListener("click", (event) => {
     return;
   }
   delete stockBySize[button.dataset.removeSize];
+  editorStockByColor[selectedEditorColor] = stockBySize;
   renderSizeStockEditor(stockBySize);
 });
 
 prodCategorySelect.addEventListener("change", () => {
-  if (document.getElementById("editProductId").value) return;
-  renderSizeStockEditor(getSuggestedStockEntries(prodCategorySelect.value));
+  if (document.getElementById("editProductId").value) {
+    try {
+      saveCurrentColorStock();
+    } catch (error) {
+      showToast(error.message);
+      return;
+    }
+    renderColorStockEditor(editorStockByColor, selectedEditorColor);
+    return;
+  }
+  renderColorStockEditor(getSuggestedColorStock(prodCategorySelect.value), "");
 });
 
 prodImageFileInput.addEventListener("change", (e) => {
@@ -952,17 +1242,23 @@ function resetProductForm() {
   document.getElementById("saveProductBtn").textContent = "Publicar Artículo";
   document.getElementById("cancelEditBtn").hidden = true;
   document.getElementById("fileUploadStatus").textContent = "JPG, PNG o WebP";
-  renderSizeStockEditor(getSuggestedStockEntries(prodCategorySelect.value));
+  prodNewColorInput.value = "";
+  renderColorStockEditor(getSuggestedColorStock(prodCategorySelect.value), "");
   prodPreviewBox.hidden = true;
 }
 
-renderSizeStockEditor(getSuggestedStockEntries(prodCategorySelect.value));
+renderColorStockEditor(getSuggestedColorStock(prodCategorySelect.value), "");
 document.getElementById("cancelEditBtn").addEventListener("click", resetProductForm);
 
 function formatStockEntries(product) {
-  return product.sizes
-    .map((size) => `${size}:${Number(product.stockBySize[String(size)] || 0)}`)
-    .join(", ");
+  return Object.entries(product.stockByColor)
+    .map(([color, stockBySize]) => {
+      const sizes = Object.entries(stockBySize)
+        .map(([size, stock]) => `${size}:${Number(stock)}`)
+        .join(", ");
+      return `${color || "Sin color asignado"} — ${sizes}`;
+    })
+    .join(" | ");
 }
 
 async function refreshAdminCatalog() {
@@ -991,9 +1287,9 @@ productAdminForm.addEventListener("submit", async (e) => {
     prodImageUrlInput.value.trim() ||
     "https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?auto=format&fit=crop&w=800&q=80";
 
-  let stockBySize;
+  let variants;
   try {
-    stockBySize = readSizeStockEditor();
+    variants = readColorStockEditor();
   } catch (error) {
     showToast(error.message);
     const firstSizeInput = prodSizeRows.querySelector("[data-size-stock]");
@@ -1013,7 +1309,6 @@ productAdminForm.addEventListener("submit", async (e) => {
     tags: tags || `${name.toLowerCase()} ${category.toLowerCase()}`,
     image
   };
-  const sizes = Object.entries(stockBySize).map(([size, stock]) => ({ size, stock }));
   const saveButton = document.getElementById("saveProductBtn");
   saveButton.disabled = true;
 
@@ -1021,7 +1316,7 @@ productAdminForm.addEventListener("submit", async (e) => {
     const { error } = await supabaseClient.rpc("save_product", {
       p_product_id: editId ? Number(editId) : null,
       p_product: product,
-      p_sizes: sizes
+      p_sizes: variants
     });
     if (error) throw error;
 
@@ -1030,11 +1325,14 @@ productAdminForm.addEventListener("submit", async (e) => {
     await refreshAdminCatalog();
   } catch (error) {
     console.error("No se pudo guardar el producto:", error);
-    showToast(
-      error.message.includes("SIZE_HAS_STOCK_OR_PENDING_ORDER")
-        ? "No puedes quitar tallas con stock o pedidos pendientes."
-        : "No se pudo guardar el producto. Revisa los datos e inténtalo de nuevo."
-    );
+    const errorMessage = String(error.message || "");
+    if (errorMessage.includes("VARIANT_HAS_STOCK_OR_PENDING_ORDER")) {
+      showToast("No puedes quitar una combinación de color y talla con stock o pedidos pendientes.");
+    } else if (errorMessage.includes("COLOR_NOT_SUPPORTED_FOR_CATEGORY")) {
+      showToast("Quita los colores antes de cambiar el producto a Carteras.");
+    } else {
+      showToast("No se pudo guardar el producto. Revisa los datos e inténtalo de nuevo.");
+    }
   } finally {
     saveButton.disabled = false;
   }
@@ -1088,7 +1386,8 @@ document.getElementById("adminProductsTableBody").addEventListener("click", asyn
     prodCategorySelect.value = prod.category;
     document.getElementById("prodPrice").value = prod.price;
     document.getElementById("prodBadge").value = prod.badge || "";
-    renderSizeStockEditor(prod.stockBySize);
+    prodNewColorInput.value = "";
+    renderColorStockEditor(prod.stockByColor, "");
     document.getElementById("prodTags").value = prod.tags || "";
     prodImageUrlInput.value = prod.image;
     prodPreviewImg.src = prod.image;
@@ -1173,7 +1472,7 @@ function renderSalesReports() {
       });
 
       const itemsSummary = order.items
-        .map((i) => escapeHtml(`${i.qty}x ${i.name} (${i.size === "Única" ? "Única" : "T." + i.size})`))
+        .map((i) => escapeHtml(`${i.qty}x ${i.name}${i.color ? ` — ${i.color}` : ""} (${i.size === "Única" ? "Única" : "T." + i.size})`))
         .join("<br/>");
 
       return `
@@ -1245,7 +1544,9 @@ document.getElementById("exportCsvBtn").addEventListener("click", () => {
   const headers = ["Codigo", "Fecha", "Cliente", "Telefono", "Direccion", "Canal", "Estado", "Unidades", "Detalle", "Total_Soles"];
   const rows = state.orders.map((o) => {
     const fecha = new Date(o.date).toLocaleString("es-PE").replace(",", "");
-    const detalle = o.items.map((i) => `${i.qty}x ${i.name} (${i.size})`).join(" | ");
+    const detalle = o.items
+      .map((i) => `${i.qty}x ${i.name}${i.color ? ` - ${i.color}` : ""} (${i.size})`)
+      .join(" | ");
     return [
       o.id,
       `"${fecha}"`,
@@ -1286,7 +1587,15 @@ productsGrid.addEventListener("click", (e) => {
   const action = btn.dataset.action;
   const id = Number(btn.dataset.id);
 
-  if (action === "select-size") {
+  if (action === "select-color") {
+    const product = state.products.find((entry) => entry.id === id);
+    const color = btn.dataset.color;
+    if (!product || !Object.prototype.hasOwnProperty.call(product.stockByColor, color)) return;
+    state.selectedColors[id] = color;
+    const sizes = Object.keys(product.stockByColor[color]);
+    state.selectedSizes[id] = sizes[Math.floor(sizes.length / 2)] || sizes[0] || "";
+    renderProducts();
+  } else if (action === "select-size") {
     state.selectedSizes[id] = String(btn.dataset.size);
     renderProducts();
   } else if (action === "add-cart") {
@@ -1395,6 +1704,18 @@ cartItemsContainer.addEventListener("click", (e) => {
   changeCartQty(Number(btn.dataset.cartIdx), Number(btn.dataset.delta));
 });
 
+function formatWhatsAppOrderItem(item) {
+  const variantDetails =
+    item.category === "Carteras"
+      ? []
+      : [`  Color: ${item.color}`, `  Talla: ${item.size}`];
+  return [
+    `- ${item.name}`,
+    ...variantDetails,
+    `  Cantidad: ${item.quantity}`
+  ].join("\n");
+}
+
 document.getElementById("whatsappCheckoutBtn").addEventListener("click", async (e) => {
   if (state.cart.length === 0) {
     showToast("Agrega al menos un artículo primero");
@@ -1406,6 +1727,14 @@ document.getElementById("whatsappCheckoutBtn").addEventListener("click", async (
   }
   if (inventoryStatus !== "ready") {
     showToast("No se pudo cargar el inventario. Inténtalo nuevamente en unos momentos.");
+    return;
+  }
+  const missingColor = state.cart.some((item) => {
+    const product = state.products.find((entry) => entry.id === item.id);
+    return product && productUsesColors(product) && !item.color;
+  });
+  if (missingColor) {
+    showToast("El carrito tiene artículos sin color. Elimínalos y agrégalos de nuevo seleccionando color.");
     return;
   }
 
@@ -1433,16 +1762,14 @@ document.getElementById("whatsappCheckoutBtn").addEventListener("click", async (
       p_customer_phone: customerPhone.value.trim(),
       p_items: state.cart.map((item) => ({
         product_id: item.id,
+        color: String(item.color || ""),
         size: String(item.size),
         quantity: item.qty
       }))
     });
     if (error) throw error;
 
-    const lines = data.items.map(
-      (item) =>
-        `- ${item.name}\n  Talla: ${item.size === "Única" ? "Única" : item.size}\n  Cantidad: ${item.quantity}\n  Precio unitario: S/ ${Number(item.price).toFixed(2)}\n  Importe: S/ ${Number(item.subtotal).toFixed(2)}`
-    );
+    const lines = data.items.map(formatWhatsAppOrderItem);
     const message = [
       "Hola, quiero realizar este pedido en trazo.",
       `Pedido: ${data.order_id}`,
@@ -1466,7 +1793,11 @@ document.getElementById("whatsappCheckoutBtn").addEventListener("click", async (
 
     data.items.forEach((item) => {
       const product = state.products.find((entry) => entry.id === Number(item.product_id));
-      if (product) product.stockBySize[String(item.size)] = Number(item.remaining_stock);
+      if (product) {
+        const color = String(item.color || "");
+        if (!product.stockByColor[color]) product.stockByColor[color] = {};
+        product.stockByColor[color][String(item.size)] = Number(item.remaining_stock);
+      }
     });
     state.cart = [];
     saveUserLists();
@@ -1481,8 +1812,9 @@ document.getElementById("whatsappCheckoutBtn").addEventListener("click", async (
   } catch (error) {
     whatsappWindow.close();
     console.error("No se pudo registrar el pedido:", error);
-    if (error.message.includes("STOCK_UNAVAILABLE")) {
-      showToast("Una talla se agotó mientras comprabas. Actualizamos el inventario.");
+    const errorMessage = String(error.message || "");
+    if (errorMessage.includes("STOCK_UNAVAILABLE")) {
+      showToast("Se agotó el stock de ese color y talla. Actualizamos el inventario.");
       try {
         await loadProductsFromDatabase();
       } catch (refreshError) {
@@ -1491,6 +1823,8 @@ document.getElementById("whatsappCheckoutBtn").addEventListener("click", async (
         renderProducts();
         setDatabaseStatus("No se pudo actualizar el inventario. Recarga la página.");
       }
+    } else if (errorMessage.includes("COLOR_REQUIRED")) {
+      showToast("Actualiza la página y vuelve a seleccionar el color del producto.");
     } else {
       showToast("No se pudo registrar el pedido. Revisa tu conexión e inténtalo de nuevo.");
     }

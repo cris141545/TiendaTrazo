@@ -307,8 +307,19 @@
                 <input type="text" id="prodBadge" placeholder="Ej. Cuero Genuino, Tejido a Mano" />
               </div>
 
+              <div class="form-field" id="prodColorField">
+                <label for="prodColorSelect">Color que estás editando</label>
+                <select id="prodColorSelect"></select>
+                <div class="color-stock-add">
+                  <input type="text" id="prodNewColor" placeholder="Ej. Negro, Marrón o Beige" />
+                  <button type="button" class="btn-add-size" id="addProductColorBtn">Agregar color</button>
+                </div>
+                <button type="button" class="btn-remove-color" id="removeProductColorBtn">Quitar color seleccionado</button>
+                <p class="size-stock-hint">El stock existente se conserva como “Sin color asignado”. Reparte esas unidades entre los colores reales y luego pon en cero el stock sin asignar.</p>
+              </div>
+
               <div class="form-field">
-                <span class="form-field-label">Stock disponible por talla *</span>
+                <span class="form-field-label" id="stockEditorTitle">Stock disponible por talla *</span>
                 <div id="prodSizeRows" class="size-stock-list" aria-label="Stock disponible por talla"></div>
                 <div class="size-stock-add">
                   <div class="form-field">
