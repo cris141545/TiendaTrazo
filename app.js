@@ -7,7 +7,7 @@ const ADMIN_CREDENTIALS = {
 };
 
 // Cambia este número por tu WhatsApp real con código de país (ej. 51999888777)
-const STORE_WHATSAPP = "51999999999";
+const STORE_WHATSAPP = "51917233318";
 
 const SECTION_DESCRIPTIONS = {
   "Todos": {
