@@ -272,8 +272,10 @@ const toastEl = document.getElementById("toast");
 // Admin DOM
 const openAdminEntryBtn = document.getElementById("openAdminEntryBtn");
 const adminEntryLabel = document.getElementById("adminEntryLabel");
+const footerAdminLink = document.getElementById("footerAdminLink");
 const adminLoginModal = document.getElementById("adminLoginModal");
 const adminPanelModal = document.getElementById("adminPanelModal");
+const adminLoginRequested = new URLSearchParams(window.location.search).get("admin") === "1";
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -721,6 +723,8 @@ function showToast(message) {
 // 6. AUTENTICACIÓN Y PANEL DE ADMINISTRADOR
 // ==========================================================================
 function updateAdminUIState() {
+  openAdminEntryBtn.hidden = !state.isAdmin;
+  footerAdminLink.hidden = !state.isAdmin;
   if (state.isAdmin) {
     openAdminEntryBtn.classList.add("is-logged");
     adminEntryLabel.textContent = "Panel Admin";
@@ -790,13 +794,19 @@ function handleAdminEntryClick(e) {
   if (state.isAdmin) {
     openAdminPanel();
   } else {
-    const loginError = document.getElementById("loginErrorMsg");
-    loginError.textContent = supabaseClient
-      ? "No se pudo iniciar sesión. Revisa tu cuenta e inténtalo de nuevo."
-      : "La base de datos aún no está configurada.";
-    loginError.hidden = false;
-    adminLoginModal.hidden = false;
+    requestAdminLogin();
   }
+}
+
+function requestAdminLogin() {
+  if (state.isAdmin) {
+    openAdminPanel();
+    return;
+  }
+  const loginError = document.getElementById("loginErrorMsg");
+  loginError.textContent = supabaseClient ? "" : "La base de datos aún no está configurada.";
+  loginError.hidden = Boolean(supabaseClient);
+  adminLoginModal.hidden = false;
 }
 
 async function openAdminPanel() {
@@ -876,7 +886,7 @@ document.getElementById("adminLogoutBtn").addEventListener("click", async () => 
 });
 
 openAdminEntryBtn.addEventListener("click", handleAdminEntryClick);
-document.getElementById("footerAdminLink").addEventListener("click", handleAdminEntryClick);
+footerAdminLink.addEventListener("click", handleAdminEntryClick);
 document.getElementById("closeLoginModalBtn").addEventListener("click", () => {
   adminLoginModal.hidden = true;
 });
@@ -1842,6 +1852,7 @@ renderCart();
 async function initializeStore() {
   if (!supabaseClient) {
     setDatabaseStatus("Inventario pendiente de configurar en Supabase. Las tallas aparecen sin stock.");
+    if (adminLoginRequested) requestAdminLogin();
     return;
   }
 
@@ -1859,6 +1870,10 @@ async function initializeStore() {
     inventoryStatus = "error";
     setDatabaseStatus("No se pudo conectar con el inventario. Recarga la página o revisa Supabase.");
     renderProducts();
+  }
+  if (adminLoginRequested) {
+    if (state.isAdmin) await openAdminPanel();
+    else requestAdminLogin();
   }
 }
 

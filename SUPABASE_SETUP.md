@@ -17,7 +17,7 @@ La tienda está publicada como sitio estático en GitHub Pages. Supabase guarda 
 
 5. En **Project Settings → API**, copia la URL del proyecto y la clave **publishable** (o `anon`).
 6. Reemplaza los dos valores de `window.SUPABASE_CONFIG` al final de `index.html` por la URL y la clave. Esta clave es pública por diseño: las políticas RLS restringen el acceso. **Nunca uses `service_role` en la tienda ni la publiques en GitHub.**
-7. Publica el cambio en GitHub Pages y abre **Admin**. Inicia sesión con la cuenta creada y registra las unidades en cada color y talla. Para una talla nueva, como `46`, escribe la talla y sus unidades y pulsa **Agregar talla**; al guardar el producto, esa talla aparecerá como opción en la tienda. Las carteras no requieren color y pueden usar `Única`.
+7. Publica el cambio en GitHub Pages. Para iniciar sesión, abre la dirección de la tienda agregando `?admin=1` (por ejemplo, `https://tu-usuario.github.io/tu-repositorio/?admin=1`) e ingresa con la cuenta creada. El acceso del panel solo se muestra después de que Supabase confirma que esa cuenta está autorizada en `admin_users`. Registra las unidades en cada color y talla. Para una talla nueva, como `46`, escribe la talla y sus unidades y pulsa **Agregar talla**; al guardar el producto, esa talla aparecerá como opción en la tienda. Las carteras no requieren color y pueden usar `Única`.
 
 ## Actualizar una base ya configurada
 
